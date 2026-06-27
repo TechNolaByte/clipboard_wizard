@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- If you install a different SDK, change ONLY this line (e.g. net9.0-windows). -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- WinForms is used for the tray icon, Screen working-area, and System.Drawing icons. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WFAC010: WinForms analyzer flags DPI in the manifest, but our windows are WPF and WPF
+         honours PerMonitorV2 from the manifest. The manifest is intentional here. -->
+    <NoWarn>WFAC010</NoWarn>
+    <AssemblyName>ClipboardWizard</AssemblyName>
+    <RootNamespace>ClipboardWizard</RootNamespace>
+  </PropertyGroup>
+
+  <!-- WinForms is enabled for the tray icon/Screen, but its implicit global usings collide with
+       WPF (Application, MessageBox, Point, ...). Drop them; WinForms types are used fully-qualified. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+</Project>

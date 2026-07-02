@@ -18,6 +18,14 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Single-instance: a new launch overrides the previous one (asking first if it's busy).
+        SingleInstance.QuitRequested = () => Dispatcher.BeginInvoke(new Action(Shutdown));
+        if (!SingleInstance.TryStart())
+        {
+            Shutdown();
+            return;
+        }
+
         AppPaths.InitializeWorkingArea();
 
         var scriptsDir = Path.Combine(
@@ -67,12 +75,22 @@ public partial class App : Application
     {
         _tray = new Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = LoadTrayIcon(),
             Visible = true,
             Text = "Clipboard Wizard",
         };
 
         var menu = new Forms.ContextMenuStrip();
+
+        var verboseItem = new Forms.ToolStripMenuItem("Verbose (run in a terminal)")
+        {
+            CheckOnClick = true,
+            Checked = AppState.Verbose,
+            ToolTipText = "Open script/LLM runs in a visible terminal instead of applying them silently.",
+        };
+        verboseItem.CheckedChanged += (_, _) => AppState.Verbose = verboseItem.Checked;
+        menu.Items.Add(verboseItem);
+
         menu.Items.Add("Open scripts folder", null, (_, _) =>
         {
             System.Diagnostics.Process.Start("explorer.exe", _registry!.ScriptsDirectory);
@@ -80,6 +98,21 @@ public partial class App : Application
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
         _tray.ContextMenuStrip = menu;
+    }
+
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "assets", "clipwiz.ico");
+            if (File.Exists(path))
+                return new System.Drawing.Icon(path);
+        }
+        catch
+        {
+            // fall back below
+        }
+        return System.Drawing.SystemIcons.Application;
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -90,6 +123,7 @@ public partial class App : Application
             _tray.Visible = false;
             _tray.Dispose();
         }
+        SingleInstance.Dispose();
         base.OnExit(e);
     }
 }

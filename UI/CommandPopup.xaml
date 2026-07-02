@@ -10,7 +10,7 @@
         SizeToContent="Height"
         WindowStartupLocation="Manual"
         Left="-32000" Top="-32000"
-        Width="300">
+        Width="440">
 
     <Window.Resources>
         <Style x:Key="GroupHeaderStyle" TargetType="TextBlock">
@@ -39,14 +39,16 @@
                     Background="#15161C" BorderBrush="#2A2C36" BorderThickness="1"
                     CornerRadius="4" Margin="0,6,0,0" Padding="6">
                 <StackPanel>
+                    <!-- Focusable=False (not IsHitTestVisible=False) so the wheel and the scrollbar
+                         work but keyboard focus stays on the filter box for ↑/↓/Enter nav. -->
                     <TextBox x:Name="PreviewText" Visibility="Collapsed"
-                             IsReadOnly="True" IsHitTestVisible="False"
+                             IsReadOnly="True" Focusable="False"
                              Background="Transparent" Foreground="#C8CDD6" BorderThickness="0"
                              FontFamily="Cascadia Mono, Consolas, Courier New" FontSize="11.5"
-                             MaxHeight="120" TextWrapping="Wrap"
+                             MaxHeight="150" TextWrapping="Wrap"
                              VerticalScrollBarVisibility="Auto" />
                     <Image x:Name="PreviewImage" Visibility="Collapsed"
-                           MaxHeight="140" Stretch="Uniform" HorizontalAlignment="Left" />
+                           MaxHeight="180" Stretch="Uniform" HorizontalAlignment="Left" />
                 </StackPanel>
             </Border>
 

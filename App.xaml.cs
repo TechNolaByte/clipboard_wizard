@@ -50,8 +50,8 @@ public partial class App : Application
 
         SetupTray();
 
-        Hawk.Changed = UpdateModeTray;
-        CycleClipboard.Changed = UpdateModeTray;
+        Hawk.Changed = OnModeChanged;
+        ClipboardCycle.Changed = OnModeChanged;
     }
 
     private void OnClipboardChanged(object? sender, EventArgs e)
@@ -74,8 +74,8 @@ public partial class App : Application
 
         // A genuine copy during a cycle ends it (our own fragment writes are suppressed, so they
         // never reach here).
-        if (CycleClipboard.Active)
-            CycleClipboard.Stop();
+        if (ClipboardCycle.Active)
+            ClipboardCycle.Stop();
 
         var commands = _registry!.GetCommands(payload);
         if (commands.Count == 0)
@@ -137,7 +137,7 @@ public partial class App : Application
         menu.Items.Add(new Forms.ToolStripSeparator());
         _hawkFlush = new Forms.ToolStripMenuItem("Flush Clipboard Hawk", null, (_, _) => Hawk.Flush()) { Enabled = false };
         _hawkCancel = new Forms.ToolStripMenuItem("Cancel Clipboard Hawk", null, (_, _) => Hawk.Cancel()) { Enabled = false };
-        _cycleStop = new Forms.ToolStripMenuItem("Stop Cycle Clipboard", null, (_, _) => CycleClipboard.Stop()) { Enabled = false };
+        _cycleStop = new Forms.ToolStripMenuItem("Stop Clipboard Cycle", null, (_, _) => ClipboardCycle.Stop()) { Enabled = false };
         menu.Items.Add(_hawkFlush);
         menu.Items.Add(_hawkCancel);
         menu.Items.Add(_cycleStop);
@@ -147,8 +147,8 @@ public partial class App : Application
         _tray.ContextMenuStrip = menu;
     }
 
-    /// <summary>Refresh the tray for Hawk/Cycle state (enabled items, counts, tooltip, balloon).</summary>
-    private void UpdateModeTray()
+    /// <summary>Refresh the tray + on-screen overlay for Hawk/Cycle state.</summary>
+    private void OnModeChanged()
     {
         if (_tray is null)
             return;
@@ -162,20 +162,32 @@ public partial class App : Application
             _hawkCancel.Enabled = Hawk.Active;
         if (_cycleStop is not null)
         {
-            _cycleStop.Enabled = CycleClipboard.Active;
-            _cycleStop.Text = CycleClipboard.Active
-                ? $"Stop Cycle ({CycleClipboard.Position}/{CycleClipboard.Total})"
-                : "Stop Cycle Clipboard";
+            _cycleStop.Enabled = ClipboardCycle.Active;
+            _cycleStop.Text = ClipboardCycle.Active
+                ? $"Stop Clipboard Cycle ({ClipboardCycle.Remaining}/{ClipboardCycle.Total})"
+                : "Stop Clipboard Cycle";
         }
 
         var tip = Hawk.Active ? $"Clipboard Hawk: {Hawk.Count} item(s) — click to flush"
-            : CycleClipboard.Active ? $"Cycle: {CycleClipboard.Position}/{CycleClipboard.Total} — Ctrl+V for next"
+            : ClipboardCycle.Active ? $"Clipboard Cycle: {ClipboardCycle.Remaining} left — Ctrl+V for next"
             : "Clipboard Wizard";
         _tray.Text = tip.Length > 63 ? tip[..63] : tip;
 
         if (Hawk.Active && !_hawkWasActive)
-            _tray.ShowBalloonTip(2500, "Clipboard Hawk", "Recording copies. Click the tray icon to flush.", Forms.ToolTipIcon.Info);
+            _tray.ShowBalloonTip(2500, "Clipboard Hawk", "Recording copies. Esc or click the tray to flush.", Forms.ToolTipIcon.Info);
         _hawkWasActive = Hawk.Active;
+
+        // On-screen overlay pinned top-left while a mode is active.
+        if (Hawk.Active)
+            ModeOverlay.Update("🦅 Clipboard Hawk",
+                $"{Hawk.Count} on stack · last: {(string.IsNullOrEmpty(Hawk.LastPreview) ? "—" : Hawk.LastPreview)}",
+                Hawk.LastThumbnail);
+        else if (ClipboardCycle.Active)
+            ModeOverlay.Update("🔁 Clipboard Cycle",
+                $"{ClipboardCycle.Remaining} left · next: {(string.IsNullOrEmpty(ClipboardCycle.NextPreview) ? "—" : ClipboardCycle.NextPreview)}",
+                null);
+        else
+            ModeOverlay.Hide();
     }
 
     private static System.Drawing.Icon LoadTrayIcon()
@@ -195,6 +207,9 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        Hawk.Cancel();
+        ClipboardCycle.Stop();
+        ModeOverlay.Hide();
         _monitor?.Dispose();
         if (_tray is not null)
         {

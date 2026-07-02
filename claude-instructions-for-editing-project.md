@@ -10,10 +10,10 @@ dotnet build
 dotnet run
 ```
 
-For a headless build-and-launch, run `pwsh -File launch.ps1`: it rebuilds only when a source file
-changed, avoids launching a second tray instance, and starts the app detached (the shell returns
-immediately). Add `-Force` to force a rebuild/restart, `-Configuration Debug` to use the Debug build,
-or run it via `pwsh -NoProfile -WindowStyle Hidden -File launch.ps1` for no console window at all.
+For a headless build-and-launch, **double-click `launch.cmd` in Explorer** (it runs `launch.ps1`
+hidden and detached), or run `pwsh -File launch.ps1` from a shell. The launcher rebuilds only when a
+source file changed, avoids launching a second tray instance, and starts the app detached (the shell
+returns immediately). `launch.ps1` flags: `-Force` (force rebuild/restart), `-Configuration Debug`.
 
 Requires the .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`). There is no main window — the app
 lives in the system tray (right-click → Exit). Copy text/an image and the popup appears at the cursor.

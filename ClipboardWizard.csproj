@@ -16,7 +16,15 @@
     <NoWarn>WFAC010</NoWarn>
     <AssemblyName>ClipboardWizard</AssemblyName>
     <RootNamespace>ClipboardWizard</RootNamespace>
+    <ApplicationIcon>assets\clipwiz.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!-- Ship the icon next to the exe so the tray can load it at runtime. -->
+  <ItemGroup>
+    <Content Include="assets\clipwiz.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
   <!-- WinForms is enabled for the tray icon/Screen, but its implicit global usings collide with
        WPF (Application, MessageBox, Point, ...). Drop them; WinForms types are used fully-qualified. -->

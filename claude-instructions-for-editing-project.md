@@ -10,13 +10,16 @@ dotnet build
 dotnet run
 ```
 
-For a headless build-and-launch, **double-click `launch.cmd` in Explorer** (it runs `launch.ps1`
-hidden and detached), or run `pwsh -File launch.ps1` from a shell. The launcher rebuilds only when a
-source file changed, avoids launching a second tray instance, and starts the app detached (the shell
-returns immediately). `launch.ps1` flags: `-Force` (force rebuild/restart), `-Configuration Debug`.
+For a headless build-and-launch, **double-click `launch.cmd` in Explorer**. It's a self-contained
+batch/PowerShell polyglot (the PowerShell build-and-launch body lives after the batch header, which
+`exit /b` skips): rebuilds only when a source file changed, runs hidden, and launches detached. It
+must stay **CRLF** (enforced by `.gitattributes`) or `cmd` mis-parses it.
 
 Requires the .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`). There is no main window — the app
-lives in the system tray (right-click → Exit). Copy text/an image and the popup appears at the cursor.
+lives in the system tray (right-click → Exit; it also has a **Verbose** toggle). Copy text/an image
+and the popup appears at the cursor. Only one instance runs: launching again overrides the previous
+one, or — if it's mid-command — asks whether to wait, override, or cancel (`Services/SingleInstance.cs`).
+The app/tray icon is `assets/clipwiz.ico`.
 
 AI commands shell out to the **`claude` CLI** (reusing your Claude Code login — no API key). Python
 scripts need `python` on PATH. Image transform/split/join use **ffmpeg** (and optionally ImageMagick),
@@ -50,7 +53,17 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
 - `Services/ActionLog.cs` — writes a per-action `.rtf` audit log (original data, instruction, process
   log, final version; images embedded) into `working/logs/`.
 - `Services/AppPaths.cs` — project dir, `library-dump/`, and the `working/` area (config/scratchpad/logs).
-- `UI/Prompts.cs` — code-only dark-themed dialogs (text input, confirm, scrollable result).
+- `UI/Prompts.cs` — code-only dark-themed dialogs (text input, confirm, scrollable result). `AskText`
+  takes an optional `context` string that shows a read-only preview of what will be sent to the AI.
+- `Services/SingleInstance.cs` — named mutex/events; new launch overrides the old one (asks first if busy).
+- `Services/AppState.cs` — runtime toggles (Verbose).
+- `Services/Terminal.cs` — opens terminals, preferring Tabby (`Tabby.exe run …`); used by "Act with" and verbose.
+- `Services/VerboseRunner.cs` — verbose mode: runs a step in a visible terminal (observational; not applied).
+- `UI/StatusToast.cs` — small non-activating "…running/processing…" chip shown near the cursor during a command.
+
+Text/script commands accept **unrecognized files by path**: `ClipboardPayload.PrimaryText` returns the
+clipboard text, or the file path(s) when there's no text, so scripts/AI can open the file themselves.
+Every command execution is wrapped in `SingleInstance.EnterBusy/ExitBusy` and (headless) shows a `StatusToast`.
 
 ## Adding a command
 
@@ -75,9 +88,8 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 | Transcribe (AI) — recreate text from image | Image | ⬜ stub (not yet wired) |
 | Reformat in situ — LLM (Sonnet via CLI, spec entered after selecting) | Actions | ✅ implemented (`ReformatLlmCommand`) |
 | Reformat in situ — Python script (Sonnet writes + saves a reusable script, then runs it) | Actions | ✅ implemented (`ReformatPythonScriptCommand`) |
-| Act with… — agentic Claude Code with full tools; confirms stakes, reports changes | Actions | ✅ implemented (`ActWithCommand`) |
-| Execute on Tailscale peer | Actions | ⬜ stub |
-| Execute on all computers | Actions | ⬜ stub |
+| Act with… — opens interactive Claude Code in a Tabby terminal (normal permissions, no stakes dialog) | Actions | ✅ implemented (`ActWithCommand`) |
+| Send to peers — runs the clipboard content on the fleet (`fleet.ps1 run`, optional `-Only`) | Actions | ✅ implemented (`SendToPeersCommand`) |
 | Log to Obsidian daily journal | Actions | ⬜ stub |
 | Clipboard Hawk — hide popup, record stack to a tray icon, flush on click | Actions | ⬜ stub |
 | Cycle Clipboard — fragment input, advance silently on each paste | Actions | ⬜ stub |

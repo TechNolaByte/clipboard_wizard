@@ -36,12 +36,15 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
   (monospace text for text/files, a thumbnail for images); keyboard nav (↑/↓ select, Enter run,
   Esc close); single-click an item to run it; closes on focus loss.
 - `Services/ClaudeCli.cs` — wraps the `claude` CLI for all AI features (text transform, vision
-  describe, agentic "Act with"). Uses sped-up flags (`-p --no-session-persistence --strict-mcp-config`,
-  neutral working dir) that don't break OAuth — deliberately **not** `--bare` (which forces API-key auth).
-- `Services/Proc.cs` — shared async external-process runner (UTF-8, no console window, optional stdin).
+  describe, agentic "Act with"). Uses sped-up flags (`-p --no-session-persistence --strict-mcp-config`)
+  that don't break OAuth — deliberately **not** `--bare` (which forces API-key auth). Runs in the
+  project `working/` dir so Claude picks up the in-situ memory.
+- `Services/Proc.cs` — shared async external-process runner (UTF-8, no console window, optional stdin/env).
 - `Services/MediaTools.cs` — resolves/downloads ffmpeg + ImageMagick into `library-dump/` on first use.
 - `Services/ImageIO.cs` — clipboard-bitmap ⇄ file ⇄ `BitmapSource` helpers.
-- `Services/AppPaths.cs` — project dir, `library-dump/`, and temp working dirs.
+- `Services/ActionLog.cs` — writes a per-action `.rtf` audit log (original data, instruction, process
+  log, final version; images embedded) into `working/logs/`.
+- `Services/AppPaths.cs` — project dir, `library-dump/`, and the `working/` area (config/scratchpad/logs).
 - `UI/Prompts.cs` — code-only dark-themed dialogs (text input, confirm, scrollable result).
 
 ## Adding a command
@@ -89,6 +92,20 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
   invoked by absolute path. ImageMagick is best-effort (library-dump/PATH copy if present); its
   portable-zip URL isn't machine-resolvable, so image **Transform** falls back to ffmpeg when magick
   is absent. Drop a `magick.exe` into `library-dump/magick/` to enable it.
+
+### Working directory & audit logs
+- `working/` (inside the project) is the working area for all AI/terminal work. Both the `claude` CLI
+  and the "Execute as PowerShell" terminal cd into it, so Claude discovers `working/CLAUDE.md`, which
+  points it at `working/config/` for durable, in-situ project memory.
+  - `working/config/` — Claude's memory (tracked in git).
+  - `working/scratchpad/` — transient staging for images / large payloads (**gitignored**).
+  - `working/logs/` — one `.rtf` per action, named `yyyy-MM-ddTHH-mm-ss.rtf`, containing the original
+    clipboard data, the instruction, the process log, and the final version (**gitignored** — the logs
+    hold raw clipboard contents, which may be sensitive). `Services/ActionLog.cs` writes them; every
+    command that acts on clipboard data logs.
+- Because `working/` is inside the project, the repo-root `CLAUDE.md` is also auto-loaded into AI calls
+  (it's a parent dir). That's usually harmless; move `working/` out of the project if you need the lean
+  text commands fully isolated from it.
 
 ## Self-write suppression
 

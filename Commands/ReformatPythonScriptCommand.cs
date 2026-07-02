@@ -78,8 +78,34 @@ public sealed class ReformatPythonScriptCommand : IClipboardCommand
             return;
         }
 
-        // Reuse the existing Python runner: pipes clipboard text in, replaces it with stdout.
-        await new PythonScriptCommand(scriptPath).ExecuteAsync(payload, context);
+        // Run the generated script now (it's also saved for reuse via the Scripts group).
+        ProcResult run;
+        try
+        {
+            run = await PythonScriptCommand.RunScriptAsync(scriptPath, payload.Text!);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Saved the script but couldn't run it:\n{ex.Message}", "Clipboard Wizard",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        var processLog =
+            $"Saved script: {scriptPath}\n\n--- generated script ---\n{script}\n\n" +
+            $"--- run ---\n{PythonScriptCommand.LogText(run)}";
+
+        if (!run.Ok)
+        {
+            ActionLog.Write("Reformat — Python script", spec, payload.Text, null, processLog, null, null);
+            MessageBox.Show($"The generated script exited with code {run.ExitCode}:\n{run.StdErr}",
+                "Clipboard Wizard", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        context.SuppressNextClipboardChange();
+        ClipboardWriter.SetText(run.StdOut);
+        ActionLog.Write("Reformat — Python script", spec, payload.Text, null, processLog, run.StdOut, null);
     }
 
     private static string StripCodeFences(string text)

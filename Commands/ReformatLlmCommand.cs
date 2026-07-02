@@ -44,8 +44,10 @@ public sealed class ReformatLlmCommand : IClipboardCommand
             return;
         }
 
+        var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}";
         if (!result.Success || string.IsNullOrEmpty(result.Output))
         {
+            ActionLog.Write("Reformat — LLM", spec, payload.Text, null, processLog, null, null);
             MessageBox.Show($"Reformat failed:\n{result.FailureMessage}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -53,5 +55,6 @@ public sealed class ReformatLlmCommand : IClipboardCommand
 
         context.SuppressNextClipboardChange();
         ClipboardWriter.SetText(result.Output);
+        ActionLog.Write("Reformat — LLM", spec, payload.Text, null, processLog, result.Output, null);
     }
 }

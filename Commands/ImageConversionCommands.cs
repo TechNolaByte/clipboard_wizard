@@ -48,6 +48,10 @@ public sealed class JpgToPngCommand : IClipboardCommand
             return Task.CompletedTask;
         }
 
+        var list = string.Join('\n', written);
+        ActionLog.Write(Name, "Convert JPEG → PNG (native WPF codecs)",
+            string.Join('\n', jpegs), null, $"wrote:\n{list}", list, null);
+
         if (written.Count > 0)
             RevealInExplorer(written[0]);
         return Task.CompletedTask;
@@ -103,9 +107,13 @@ public sealed class SplitGifCommand : IClipboardCommand
             return;
         }
 
-        var first = Directory.EnumerateFiles(outDir, "frame_*.png").FirstOrDefault();
-        if (first is not null)
-            JpgToPngCommand.RevealInExplorer(first);
+        var frames = Directory.EnumerateFiles(outDir, "frame_*.png").ToList();
+        ActionLog.Write(Name, $"Split GIF into PNGs ({gif})", gif, null,
+            $"exit code: {run.ExitCode}\noutput dir: {outDir}\nframes: {frames.Count}\n\nffmpeg stderr:\n{run.StdErr}",
+            string.Join('\n', frames), null);
+
+        if (frames.Count > 0)
+            JpgToPngCommand.RevealInExplorer(frames[0]);
     }
 }
 
@@ -134,7 +142,7 @@ public sealed class JoinPngsToGifCommand : IClipboardCommand
         }
 
         // ffmpeg's image-sequence input needs consecutively-numbered files, so stage copies.
-        var stageDir = Path.Combine(AppPaths.WorkDir, $"gifjoin_{Guid.NewGuid():N}");
+        var stageDir = Path.Combine(AppPaths.ScratchpadDir, $"gifjoin_{Guid.NewGuid():N}");
         Directory.CreateDirectory(stageDir);
         try
         {
@@ -152,11 +160,15 @@ public sealed class JoinPngsToGifCommand : IClipboardCommand
 
             if (!run.Ok || !File.Exists(outGif))
             {
+                ActionLog.Write(Name, "Join PNGs into GIF", string.Join('\n', frames), null,
+                    $"exit code: {run.ExitCode}\nffmpeg stderr:\n{run.StdErr}", null, null);
                 MessageBox.Show($"ffmpeg failed (exit {run.ExitCode}):\n{run.StdErr}", "Clipboard Wizard",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
+            ActionLog.Write(Name, "Join PNGs into GIF", string.Join('\n', frames), null,
+                $"exit code: {run.ExitCode}\noutput: {outGif}\n\nffmpeg stderr:\n{run.StdErr}", null, outGif);
             JpgToPngCommand.RevealInExplorer(outGif);
         }
         finally

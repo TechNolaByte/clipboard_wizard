@@ -35,7 +35,7 @@ public sealed class TransformImageCommand : IClipboardCommand
         string inPath;
         try
         {
-            inPath = ImageIO.Materialize(payload, AppPaths.WorkDir);
+            inPath = ImageIO.Materialize(payload, AppPaths.ScratchpadDir);
         }
         catch (Exception ex)
         {
@@ -70,7 +70,7 @@ public sealed class TransformImageCommand : IClipboardCommand
             return;
         }
 
-        var outPath = Path.Combine(AppPaths.WorkDir, $"out_{Guid.NewGuid():N}.png");
+        var outPath = Path.Combine(AppPaths.ScratchpadDir, $"out_{Guid.NewGuid():N}.png");
 
         var systemPrompt =
             $"Output ONLY a single line: the command-line arguments to pass to the {toolName} " +
@@ -104,7 +104,7 @@ public sealed class TransformImageCommand : IClipboardCommand
         ProcResult run;
         try
         {
-            run = await Proc.RunAsync(tool, args, workingDir: AppPaths.WorkDir);
+            run = await Proc.RunAsync(tool, args, workingDir: AppPaths.ScratchpadDir);
         }
         catch (Exception ex)
         {
@@ -113,8 +113,13 @@ public sealed class TransformImageCommand : IClipboardCommand
             return;
         }
 
+        var processLog =
+            $"tool: {toolName}\ngenerated args: {gen.Output}\nfinal args: {string.Join(' ', args)}\n\n" +
+            $"exit code: {run.ExitCode}\nstdout:\n{run.StdOut}\nstderr:\n{run.StdErr}";
+
         if (!run.Ok || !File.Exists(outPath))
         {
+            ActionLog.Write("Transform image", spec, null, inPath, processLog, null, null);
             MessageBox.Show(
                 $"{toolName} failed (exit {run.ExitCode}).\n\nArguments:\n{string.Join(' ', args)}\n\n{run.StdErr}",
                 "Clipboard Wizard", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -126,6 +131,7 @@ public sealed class TransformImageCommand : IClipboardCommand
             var image = ImageIO.Load(outPath);
             context.SuppressNextClipboardChange();
             ClipboardWriter.SetImage(image);
+            ActionLog.Write("Transform image", spec, null, inPath, processLog, null, outPath);
         }
         catch (Exception ex)
         {

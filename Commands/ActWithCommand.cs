@@ -34,7 +34,7 @@ public sealed class ActWithCommand : IClipboardCommand
         if (string.IsNullOrWhiteSpace(instruction))
             return;
 
-        var workingDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var workingDir = AppPaths.WorkingRoot;
 
         if (!Prompts.Confirm("Act with — confirm stakes",
                 $"Claude Code will run with FULL permissions (it can edit files and run commands) in:\n" +
@@ -76,6 +76,9 @@ public sealed class ActWithCommand : IClipboardCommand
             ? (string.IsNullOrWhiteSpace(result.Output) ? "(claude produced no output)" : result.Output)
             : $"claude exited with code {result.ExitCode}:\n\n{result.FailureMessage}";
 
+        ActionLog.Write("Act with", instruction, content, null,
+            $"stdout:\n{result.Output}\n\nstderr:\n{result.Error}", summary, null);
+
         Prompts.ShowResult("Act with — result", summary);
     }
 
@@ -86,7 +89,7 @@ public sealed class ActWithCommand : IClipboardCommand
             if (payload.Text!.Length <= InlineLimit)
                 return payload.Text!;
 
-            var staged = Path.Combine(AppPaths.WorkDir, $"clipboard_{Guid.NewGuid():N}.txt");
+            var staged = Path.Combine(AppPaths.ScratchpadDir, $"clipboard_{Guid.NewGuid():N}.txt");
             File.WriteAllText(staged, payload.Text!);
             return $"(The clipboard text is large; it has been saved to: {staged}\n" +
                    "Read that file to get the full content.)";
@@ -97,7 +100,7 @@ public sealed class ActWithCommand : IClipboardCommand
 
         if (payload.HasImage)
         {
-            var staged = ImageIO.SavePng(payload.Image!, AppPaths.WorkDir);
+            var staged = ImageIO.SavePng(payload.Image!, AppPaths.ScratchpadDir);
             return $"(An image is on the clipboard; it has been saved to: {staged}\n" +
                    "Read that file if you need to view it.)";
         }

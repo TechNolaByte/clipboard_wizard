@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using ClipboardWizard.Models;
+using ClipboardWizard.Services;
 
 namespace ClipboardWizard.Commands;
 
@@ -44,12 +45,20 @@ public sealed class PowerShellCommand : IClipboardCommand
                 // UseShellExecute => spawns its own terminal window and honours the OS default
                 // terminal application (Windows Terminal on Windows 11, if configured).
                 UseShellExecute = true,
+                // Open in the project's working directory so terminal work stays alongside claude's.
+                WorkingDirectory = AppPaths.WorkingRoot,
             };
             psi.ArgumentList.Add("-NoExit");
             psi.ArgumentList.Add("-Command");
             psi.ArgumentList.Add(bootstrap);
 
             Process.Start(psi);
+
+            ActionLog.Write("Execute as PowerShell",
+                "Open a terminal in the working dir with the code pre-typed (awaiting Enter)",
+                payload.Text, null,
+                $"Opened terminal in {AppPaths.WorkingRoot}",
+                "(handed to terminal; not transformed here)", null);
         }
         catch (Exception ex)
         {

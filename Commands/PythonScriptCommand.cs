@@ -1,6 +1,5 @@
-using System.Diagnostics;
+using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using ClipboardWizard.Models;
@@ -14,6 +13,9 @@ namespace ClipboardWizard.Commands;
 /// </summary>
 public sealed class PythonScriptCommand : IClipboardCommand
 {
+    private static readonly IReadOnlyDictionary<string, string> Utf8Env =
+        new Dictionary<string, string> { ["PYTHONIOENCODING"] = "utf-8" };
+
     private readonly string _scriptPath;
 
     public PythonScriptCommand(string scriptPath)
@@ -28,43 +30,23 @@ public sealed class PythonScriptCommand : IClipboardCommand
 
     public bool CanExecute(ClipboardPayload payload) => payload.HasText;
 
+    /// <summary>Run a Python script with <paramref name="input"/> on stdin; used here and by reformat.</summary>
+    public static Task<ProcResult> RunScriptAsync(string scriptPath, string input) =>
+        Proc.RunAsync("python", new[] { scriptPath }, input, env: Utf8Env);
+
+    /// <summary>Build the process-log section shown in the .rtf audit log.</summary>
+    public static string LogText(ProcResult r) =>
+        $"exit code: {r.ExitCode}\n\nstdout:\n{r.StdOut}\n\nstderr:\n{r.StdErr}";
+
     public async Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
     {
         if (!payload.HasText)
             return;
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = "python",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-        };
-        psi.ArgumentList.Add(_scriptPath);
-        psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
-
-        string output;
-        string error;
-        int exitCode;
+        ProcResult result;
         try
         {
-            using var proc = Process.Start(psi)
-                ?? throw new InvalidOperationException("Failed to start python.");
-
-            await proc.StandardInput.WriteAsync(payload.Text);
-            proc.StandardInput.Close();
-
-            var outputTask = proc.StandardOutput.ReadToEndAsync();
-            var errorTask = proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-
-            output = await outputTask;
-            error = await errorTask;
-            exitCode = proc.ExitCode;
+            result = await RunScriptAsync(_scriptPath, payload.Text!);
         }
         catch (Exception ex)
         {
@@ -73,14 +55,17 @@ public sealed class PythonScriptCommand : IClipboardCommand
             return;
         }
 
-        if (exitCode != 0)
+        var command = $"Python script: {Name}";
+        if (!result.Ok)
         {
-            MessageBox.Show($"'{Name}' exited with code {exitCode}:\n{error}", "Clipboard Wizard",
+            ActionLog.Write(command, _scriptPath, payload.Text, null, LogText(result), null, null);
+            MessageBox.Show($"'{Name}' exited with code {result.ExitCode}:\n{result.StdErr}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         context.SuppressNextClipboardChange();
-        ClipboardWriter.SetText(output);
+        ClipboardWriter.SetText(result.StdOut);
+        ActionLog.Write(command, _scriptPath, payload.Text, null, LogText(result), result.StdOut, null);
     }
 }

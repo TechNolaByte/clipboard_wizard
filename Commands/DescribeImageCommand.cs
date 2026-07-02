@@ -41,7 +41,7 @@ public sealed class DescribeImageCommand : IClipboardCommand
         string imagePath;
         try
         {
-            imagePath = ImageIO.Materialize(payload, AppPaths.WorkDir);
+            imagePath = ImageIO.Materialize(payload, AppPaths.ScratchpadDir);
         }
         catch (Exception ex)
         {
@@ -59,7 +59,7 @@ public sealed class DescribeImageCommand : IClipboardCommand
         ClaudeResult result;
         try
         {
-            result = await ClaudeCli.RunVisionReadAsync(instruction, AppPaths.WorkDir);
+            result = await ClaudeCli.RunVisionReadAsync(instruction, AppPaths.ScratchpadDir);
         }
         catch (Exception ex)
         {
@@ -68,8 +68,10 @@ public sealed class DescribeImageCommand : IClipboardCommand
             return;
         }
 
+        var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}";
         if (!result.Success || string.IsNullOrEmpty(result.Output))
         {
+            ActionLog.Write(Name, instruction, null, imagePath, processLog, null, null);
             MessageBox.Show($"Describe failed:\n{result.FailureMessage}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -77,6 +79,7 @@ public sealed class DescribeImageCommand : IClipboardCommand
 
         context.SuppressNextClipboardChange();
         ClipboardWriter.SetText(result.Output);
+        ActionLog.Write(Name, instruction, null, imagePath, processLog, result.Output, null);
         Prompts.ShowResult($"{Name} (copied to clipboard)", result.Output);
     }
 }

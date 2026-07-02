@@ -23,6 +23,7 @@ public static class Proc
         IEnumerable<string> args,
         string? stdin = null,
         string? workingDir = null,
+        IReadOnlyDictionary<string, string>? env = null,
         CancellationToken ct = default)
     {
         var psi = new ProcessStartInfo
@@ -41,6 +42,9 @@ public static class Proc
             psi.ArgumentList.Add(a);
         if (!string.IsNullOrEmpty(workingDir))
             psi.WorkingDirectory = workingDir;
+        if (env is not null)
+            foreach (var (k, v) in env)
+                psi.EnvironmentVariables[k] = v;
 
         using var proc = Process.Start(psi)
             ?? throw new InvalidOperationException($"Failed to start '{fileName}'.");

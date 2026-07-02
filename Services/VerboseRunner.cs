@@ -38,6 +38,6 @@ public static class VerboseRunner
         sb.AppendLine("Write-Host \"`n=== done (exit $LASTEXITCODE) — result was NOT applied to the clipboard (verbose mode) ===\" -ForegroundColor Cyan");
 
         File.WriteAllText(wrapper, sb.ToString(), new UTF8Encoding(false));
-        Terminal.RunPwsh("& '" + wrapper.Replace("'", "''") + "'");
+        Terminal.RunScript(wrapper);
     }
 }

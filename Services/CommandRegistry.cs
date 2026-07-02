@@ -92,5 +92,23 @@ public sealed class CommandRegistry
             "import sys, re\n" +
             "data = sys.stdin.read()\n" +
             "sys.stdout.write(re.sub(r'\\s+', ' ', data).strip())\n");
+
+        // Ported from an earlier prototype (see docs/prior-art.md).
+        File.WriteAllText(Path.Combine(_scriptsDir, "convert_path_slashes.py"),
+            "import sys\n" +
+            "# Convert Windows backslashes to Unix forward slashes.\n" +
+            "sys.stdout.write(sys.stdin.read().replace('\\\\', '/'))\n");
+
+        File.WriteAllText(Path.Combine(_scriptsDir, "search_clipboard_lines.py"),
+            "import sys, webbrowser\n" +
+            "# Open a browser tab for each non-empty line: a URL as-is, otherwise a web search.\n" +
+            "# The clipboard is left unchanged (the input is echoed back to stdout).\n" +
+            "text = sys.stdin.read()\n" +
+            "for line in text.splitlines():\n" +
+            "    line = line.strip()\n" +
+            "    if line:\n" +
+            "        url = line if '://' in line else 'https://www.google.com/search?q=' + line.replace(' ', '+')\n" +
+            "        webbrowser.open_new_tab(url)\n" +
+            "sys.stdout.write(text)\n");
     }
 }

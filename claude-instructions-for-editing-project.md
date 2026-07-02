@@ -91,8 +91,8 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 | Act with… — opens interactive Claude Code in a Tabby terminal (normal permissions, no stakes dialog) | Actions | ✅ implemented (`ActWithCommand`) |
 | Send to peers — runs the clipboard content on the fleet (`fleet.ps1 run`, optional `-Only`) | Actions | ✅ implemented (`SendToPeersCommand`) |
 | Log to Obsidian daily journal | Actions | ⬜ stub |
-| Clipboard Hawk — hide popup, record stack to a tray icon, flush on click | Actions | ⬜ stub |
-| Cycle Clipboard — fragment input, advance silently on each paste | Actions | ⬜ stub |
+| Clipboard Hawk — hide popup, record stack to a tray icon, flush on click | Actions | ⬜ stub (see `docs/prior-art.md`; `assets/hit.wav`) |
+| Cycle Clipboard — fragment input, advance silently on each paste | Actions | ⬜ stub (reference algorithm in `docs/prior-art.md`) |
 | Auto-format and print | Actions | ⬜ stub (printer not yet available) |
 
 ### AI commands (via the `claude` CLI)

@@ -12,3 +12,6 @@ obj/
 ## OS
 Thumbs.db
 desktop.ini
+
+## Bundled media binaries (ffmpeg / ImageMagick), downloaded on first use — kept off PATH
+library-dump/

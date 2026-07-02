@@ -71,6 +71,9 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
   are active) reporting global Ctrl+V / Escape without focus. Never suppresses keys.
 - `UI/ModeOverlay.cs` — the top-left on-screen status card shown while a mode is active (icon, detail,
   optional thumbnail).
+- `Services/HotkeyService.cs` — registers the global **Ctrl+Win+C** hotkey (via `RegisterHotKey` on a
+  hidden tool window) to summon the popup on demand (`App.ShowPopup(force: true)` — shows even when
+  the clipboard is empty). `Registered` is false if the combo is already taken (App warns via the tray).
 - `UI/StatusToast.cs` — small non-activating "…running/processing…" chip shown near the cursor during a command.
 
 Text/script commands accept **unrecognized files by path**: `ClipboardPayload.PrimaryText` returns the

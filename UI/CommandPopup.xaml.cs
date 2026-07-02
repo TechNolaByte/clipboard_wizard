@@ -155,7 +155,12 @@ public partial class CommandPopup : Window
         {
             PreviewText.Text = string.Join('\n', payload.Files!.Select(Path.GetFileName));
             ShowPreview(image: false);
+            return;
         }
+
+        // Nothing on the clipboard (e.g. opened via the Ctrl+Win+C hotkey with an empty clipboard).
+        PreviewText.Text = "<no clipboard>";
+        ShowPreview(image: false);
     }
 
     private void ShowPreview(bool image)

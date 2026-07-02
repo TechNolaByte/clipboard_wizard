@@ -10,6 +10,7 @@ namespace ClipboardWizard;
 public partial class App : Application
 {
     private ClipboardMonitor? _monitor;
+    private HotkeyService? _hotkeys;
     private CommandRegistry? _registry;
     private CommandPopup? _popup;
     private Forms.NotifyIcon? _tray;
@@ -52,33 +53,49 @@ public partial class App : Application
 
         Hawk.Changed = OnModeChanged;
         ClipboardCycle.Changed = OnModeChanged;
+
+        // Global hotkey (Ctrl+Win+C) to summon the popup on demand for the current clipboard.
+        _hotkeys = new HotkeyService();
+        _hotkeys.Activated += (_, _) => Dispatcher.BeginInvoke(new Action(() => ShowPopup(force: true)));
+        _hotkeys.Start();
+        if (!_hotkeys.Registered)
+            _tray?.ShowBalloonTip(4000, "Clipboard Wizard",
+                "Couldn't register Ctrl+Win+C — another app already uses it. The tray and the " +
+                "copy-triggered popup still work.", Forms.ToolTipIcon.Warning);
     }
 
     private void OnClipboardChanged(object? sender, EventArgs e)
     {
         // The notification arrives on the UI thread already, but BeginInvoke yields so the
         // clipboard owner has finished writing before we read it.
-        Dispatcher.BeginInvoke(ShowPopup);
+        Dispatcher.BeginInvoke(new Action(() => ShowPopup()));
     }
 
-    private void ShowPopup()
+    /// <summary>
+    /// Show the command popup for the current clipboard. <paramref name="force"/> (the hotkey path)
+    /// opens it even when the clipboard is empty or a mode is active; the change-driven path doesn't.
+    /// </summary>
+    private void ShowPopup(bool force = false)
     {
         var payload = ClipboardPayload.Capture();
 
-        // Clipboard Hawk swallows the change: record it, no popup.
-        if (Hawk.Active)
+        if (!force)
         {
-            Hawk.Capture(payload);
-            return;
+            // Clipboard Hawk swallows the change: record it, no popup.
+            if (Hawk.Active)
+            {
+                Hawk.Capture(payload);
+                return;
+            }
+
+            // A genuine copy during a cycle ends it (our own fragment writes are suppressed, so
+            // they never reach here).
+            if (ClipboardCycle.Active)
+                ClipboardCycle.Stop();
         }
 
-        // A genuine copy during a cycle ends it (our own fragment writes are suppressed, so they
-        // never reach here).
-        if (ClipboardCycle.Active)
-            ClipboardCycle.Stop();
-
         var commands = _registry!.GetCommands(payload);
-        if (commands.Count == 0)
+        if (!force && commands.Count == 0)
             return;
 
         if (_popup is not null)
@@ -210,6 +227,7 @@ public partial class App : Application
         Hawk.Cancel();
         ClipboardCycle.Stop();
         ModeOverlay.Hide();
+        _hotkeys?.Dispose();
         _monitor?.Dispose();
         if (_tray is not null)
         {

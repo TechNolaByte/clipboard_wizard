@@ -43,6 +43,10 @@ The app runs in the system tray (no main window). Right-click the tray icon for 
 (runs script/LLM commands in a visible terminal) and **Exit**. Only one instance runs at a time —
 launching again takes over the previous one (and asks first if it's mid-command).
 
+Press **Ctrl+Win+C** to summon the popup for the current clipboard on demand (shows `<no clipboard>`
+if empty). If another app already owns that hotkey, the tray warns you and the copy-triggered popup
+still works.
+
 ## Keyboard
 
 | Key | Action |

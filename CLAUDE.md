@@ -13,6 +13,11 @@ dotnet run
 Requires the .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`). There is no main window — the app
 lives in the system tray (right-click → Exit). Copy text/an image and the popup appears at the cursor.
 
+AI commands shell out to the **`claude` CLI** (reusing your Claude Code login — no API key). Python
+scripts need `python` on PATH. Image transform/split/join use **ffmpeg** (and optionally ImageMagick),
+which are downloaded on first use into a gitignored `library-dump/` folder in the project directory
+(kept off PATH so they don't shadow other installs).
+
 ## Architecture
 
 - `App.xaml.cs` — composition root. Starts `ClipboardMonitor`, owns the tray icon, and shows the
@@ -27,8 +32,17 @@ lives in the system tray (right-click → Exit). Copy text/an image and the popu
 - `Services/CommandRegistry.cs` — **the one place to register commands.** Returns Scripts → Image →
   Actions, filtered by `CanExecute`.
 - `UI/CommandPopup.xaml(.cs)` — borderless topmost menu. Placed at the cursor in pixel space via
-  `SetWindowPos` + per-monitor DPI (robust across multi-monitor); filter box; keyboard nav
-  (↑/↓ select, Enter run, Esc close); single-click an item to run it; closes on focus loss.
+  `SetWindowPos` + per-monitor DPI (robust across multi-monitor); filter box; a **preview panel**
+  (monospace text for text/files, a thumbnail for images); keyboard nav (↑/↓ select, Enter run,
+  Esc close); single-click an item to run it; closes on focus loss.
+- `Services/ClaudeCli.cs` — wraps the `claude` CLI for all AI features (text transform, vision
+  describe, agentic "Act with"). Uses sped-up flags (`-p --no-session-persistence --strict-mcp-config`,
+  neutral working dir) that don't break OAuth — deliberately **not** `--bare` (which forces API-key auth).
+- `Services/Proc.cs` — shared async external-process runner (UTF-8, no console window, optional stdin).
+- `Services/MediaTools.cs` — resolves/downloads ffmpeg + ImageMagick into `library-dump/` on first use.
+- `Services/ImageIO.cs` — clipboard-bitmap ⇄ file ⇄ `BitmapSource` helpers.
+- `Services/AppPaths.cs` — project dir, `library-dump/`, and temp working dirs.
+- `UI/Prompts.cs` — code-only dark-themed dialogs (text input, confirm, scrollable result).
 
 ## Adding a command
 
@@ -45,24 +59,36 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 |---|---|---|
 | Python scripts (stdin → stdout, newest first) | Scripts | ✅ implemented (`PythonScriptCommand`) |
 | Execute as PowerShell — opens a terminal with the code pre-typed, awaiting Enter | Actions | ✅ implemented (`PowerShellCommand`) |
-| Split GIF into PNGs | Image | ⬜ stub (local) |
-| Join PNGs into GIF | Image | ⬜ stub (local) |
-| .jpg to .png | Image | ⬜ stub (local) |
-| Transcribe (AI) — recreate text from image | Image | ⬜ stub (cheapest vision model) |
-| Describe — short (5 words) / medium (1 sentence) / long (3 sentences) | Image | ⬜ stub (cheapest vision model) |
+| Split GIF into PNGs | Image | ✅ implemented (ffmpeg, `SplitGifCommand`) |
+| Join PNGs into GIF | Image | ✅ implemented (ffmpeg, `JoinPngsToGifCommand`) |
+| .jpg to .png | Image | ✅ implemented (native WPF codecs, `JpgToPngCommand`) |
+| Transform image — NL spec → ImageMagick/ffmpeg args | Image | ✅ implemented (`TransformImageCommand`) |
+| Describe — title (~5 words) / verbose (~3 sentences) | Image | ✅ implemented (Sonnet vision via CLI, `DescribeImageCommand`) |
+| Transcribe (AI) — recreate text from image | Image | ⬜ stub (not yet wired) |
+| Reformat in situ — LLM (Sonnet via CLI, spec entered after selecting) | Actions | ✅ implemented (`ReformatLlmCommand`) |
+| Reformat in situ — Python script (Sonnet writes + saves a reusable script, then runs it) | Actions | ✅ implemented (`ReformatPythonScriptCommand`) |
+| Act with… — agentic Claude Code with full tools; confirms stakes, reports changes | Actions | ✅ implemented (`ActWithCommand`) |
 | Execute on Tailscale peer | Actions | ⬜ stub |
 | Execute on all computers | Actions | ⬜ stub |
 | Log to Obsidian daily journal | Actions | ⬜ stub |
 | Clipboard Hawk — hide popup, record stack to a tray icon, flush on click | Actions | ⬜ stub |
 | Cycle Clipboard — fragment input, advance silently on each paste | Actions | ⬜ stub |
-| Intelligent Reformat — `claude -p` reformat to a spec entered after selecting | Actions | ⬜ stub |
 | Auto-format and print | Actions | ⬜ stub (printer not yet available) |
 
-### Notes for implementing the AI commands
-- Transcribe/Describe must be **fast and cheap** — use the cheapest current Claude vision model
-  (Haiku tier). **Confirm the exact model id/pricing against the Claude API reference before coding;
-  do not hardcode from memory.** Describe lengths: short = 5 words, medium = 1 sentence, long = 3.
-- Intelligent Reformat shells out to `claude -p` with a user-supplied spec.
+### AI commands (via the `claude` CLI)
+- All AI features route through `Services/ClaudeCli.cs` (the CLI, **not** the HTTP API) so they reuse
+  the user's Claude Code login. Model is **Sonnet** (`--model sonnet`, i.e. `claude-sonnet-5`).
+- Text transforms pipe clipboard text to the CLI's stdin and disable tools (`--tools ""`) for speed.
+- **Describe** uses vision: the CLI has no image flag, so the image is written to a temp file and
+  viewed via the Read tool (`--tools "Read"`, restricted, under `bypassPermissions`).
+- **Act with** runs agentically with full tools under `--permission-mode bypassPermissions`, gated by
+  a stakes-confirmation dialog, and is asked to end with a "## Changes made" summary shown afterward.
+
+### Bundled media binaries
+- `Services/MediaTools.cs` downloads ffmpeg on first use into `library-dump/` (gitignored, off PATH),
+  invoked by absolute path. ImageMagick is best-effort (library-dump/PATH copy if present); its
+  portable-zip URL isn't machine-resolvable, so image **Transform** falls back to ffmpeg when magick
+  is absent. Drop a `magick.exe` into `library-dump/magick/` to enable it.
 
 ## Self-write suppression
 

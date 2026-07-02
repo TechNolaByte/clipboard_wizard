@@ -81,6 +81,10 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 ### AI commands (via the `claude` CLI)
 - All AI features route through `Services/ClaudeCli.cs` (the CLI, **not** the HTTP API) so they reuse
   the user's Claude Code login. Model is **Sonnet** (`--model sonnet`, i.e. `claude-sonnet-5`).
+- The **lean ops** (text transforms + vision describe) run under `--safe-mode`: it disables CLAUDE.md
+  auto-discovery, skills, hooks, and MCP while keeping OAuth auth, built-in tools, and permissions —
+  so no project docs leak into a clipboard transform. Since safe-mode also skips the working memory,
+  `ClaudeCli.DumpMemory()` reads `working/config/` and injects it via `--append-system-prompt`.
 - Text transforms pipe clipboard text to the CLI's stdin and disable tools (`--tools ""`) for speed.
 - **Describe** uses vision: the CLI has no image flag, so the image is written to a temp file and
   viewed via the Read tool (`--tools "Read"`, restricted, under `bypassPermissions`).

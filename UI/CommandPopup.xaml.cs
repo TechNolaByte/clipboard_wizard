@@ -25,7 +25,8 @@ public partial class CommandPopup : Window
     private readonly CommandContext _context;
     private readonly ObservableCollection<CommandItem> _items;
     private readonly ICollectionView _view;
-    private bool _isClosing;
+    private bool _dismissing;
+    private bool _executing;
     private bool _ignoreDeactivate;
 
     public CommandPopup(ClipboardPayload payload, IReadOnlyList<IClipboardCommand> commands, CommandContext context)
@@ -51,6 +52,9 @@ public partial class CommandPopup : Window
 
         Loaded += (_, _) => FilterBox.Focus();
         ContentRendered += OnContentRendered;
+        // Set the guard the instant any close begins (Escape, focus loss, or an external
+        // Close() from App), so the Deactivated that a close raises can't re-enter Close().
+        Closing += (_, _) => _dismissing = true;
         Deactivated += OnDeactivated; // dismiss when focus leaves the popup
         PreviewKeyDown += OnPreviewKeyDown;
     }
@@ -59,7 +63,16 @@ public partial class CommandPopup : Window
     {
         // Don't self-close while a modal (e.g. the delete confirmation) is up.
         if (!_ignoreDeactivate)
-            Close();
+            Dismiss();
+    }
+
+    /// <summary>Close the popup at most once (Escape, focus loss, and post-run all route here).</summary>
+    private void Dismiss()
+    {
+        if (_dismissing)
+            return;
+        _dismissing = true;
+        Close();
     }
 
     // ---- Script delete (the ✕ button on user scripts) ----
@@ -214,7 +227,7 @@ public partial class CommandPopup : Window
         switch (e.Key)
         {
             case Key.Escape:
-                Close();
+                Dismiss();
                 e.Handled = true;
                 break;
             case Key.Enter:
@@ -272,10 +285,11 @@ public partial class CommandPopup : Window
 
     private async void ExecuteSelected()
     {
-        if (_isClosing || CommandList.SelectedItem is not CommandItem item)
+        if (_executing || _dismissing || CommandList.SelectedItem is not CommandItem item)
             return;
 
-        _isClosing = true;
+        _executing = true;
+        _ignoreDeactivate = true; // Hide() deactivates; don't let that auto-close us mid-run
         Hide(); // get the menu out of the way before the command runs
 
         SingleInstance.EnterBusy(); // mark this instance busy so a new launch asks before overriding
@@ -286,7 +300,7 @@ public partial class CommandPopup : Window
         finally
         {
             SingleInstance.ExitBusy();
-            Close();
+            Dismiss();
         }
     }
 }

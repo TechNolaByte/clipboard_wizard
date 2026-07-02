@@ -59,8 +59,10 @@ public partial class App : Application
 
         if (_popup is not null)
         {
-            _popup.Close();
+            var old = _popup;
             _popup = null;
+            try { old.Close(); }
+            catch (InvalidOperationException) { /* already closing — nothing to do */ }
         }
 
         var context = new CommandContext
@@ -68,8 +70,11 @@ public partial class App : Application
             SuppressNextClipboardChange = () => _monitor!.SuppressNext(),
         };
 
-        _popup = new CommandPopup(payload, commands, context);
-        _popup.Closed += (_, _) => _popup = null;
+        var popup = new CommandPopup(payload, commands, context);
+        // Only clear the field if this exact popup is still the current one (avoids a late Closed
+        // from a previous popup nulling out the new one).
+        popup.Closed += (_, _) => { if (ReferenceEquals(_popup, popup)) _popup = null; };
+        _popup = popup;
         _popup.Show();
         _popup.Activate();
     }

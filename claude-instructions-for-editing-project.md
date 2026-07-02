@@ -62,10 +62,15 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
   so passing a command with spaces/quotes/newlines inline gets mangled — the complex content lives in
   the script. Used by "Act with" and verbose.
 - `Services/VerboseRunner.cs` — verbose mode: runs a step in a visible terminal (observational; not applied).
-- `Services/Hawk.cs` — Clipboard Hawk: while active, App routes clipboard changes here (record + hit
-  sound + tray count) instead of showing the popup; flush joins the stack back onto the clipboard.
-- `Services/CycleClipboard.cs` — Cycle Clipboard: splits text into fragments and advances on each
-  Ctrl+V via a `WH_KEYBOARD_LL` hook installed only while a cycle is active.
+- `Services/Hawk.cs` — Clipboard Hawk: while active, App routes clipboard changes here (record
+  text/images + hit sound) instead of showing the popup; exposes last-item preview/thumbnail + count
+  for the overlay; flush joins the stack back onto the clipboard. Esc flushes (global).
+- `Services/ClipboardCycle.cs` — Clipboard Cycle: splits text into fragments and advances on each
+  Ctrl+V; exposes remaining + next-preview for the overlay. Esc ends it (global).
+- `Services/GlobalKeys.cs` — shared, refcounted `WH_KEYBOARD_LL` hook (installed only while Hawk/Cycle
+  are active) reporting global Ctrl+V / Escape without focus. Never suppresses keys.
+- `UI/ModeOverlay.cs` — the top-left on-screen status card shown while a mode is active (icon, detail,
+  optional thumbnail).
 - `UI/StatusToast.cs` — small non-activating "…running/processing…" chip shown near the cursor during a command.
 
 Text/script commands accept **unrecognized files by path**: `ClipboardPayload.PrimaryText` returns the
@@ -98,8 +103,8 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 | Act with… — opens interactive Claude Code in a Tabby terminal (normal permissions, no stakes dialog) | Actions | ✅ implemented (`ActWithCommand`) |
 | Send to peers — runs the clipboard content on the fleet (`fleet.ps1 run`, optional `-Only`) | Actions | ✅ implemented (`SendToPeersCommand`) |
 | Log to Obsidian daily journal | Actions | ⬜ stub |
-| Clipboard Hawk — suppress popup, record copies to a stack (hit sound + tray count), flush from the tray | Actions | ✅ implemented (`HawkCommand`, `Services/Hawk.cs`) |
-| Cycle Clipboard — split into fragments; each Ctrl+V pastes the next (low-level keyboard hook) | Actions | ✅ implemented (`CycleClipboardCommand`, `Services/CycleClipboard.cs`) |
+| Clipboard Hawk — suppress popup, record copies (text/image) to a stack with a hit sound; top-left overlay + tray count; Esc or tray flushes | Actions | ✅ implemented (`HawkCommand`, `Services/Hawk.cs`) |
+| Clipboard Cycle — split into fragments; each Ctrl+V pastes the next; top-left overlay; Esc / next-copy ends it | Actions | ✅ implemented (`ClipboardCycleCommand`, `Services/ClipboardCycle.cs`) |
 | Auto-format and print | Actions | ⬜ stub (printer not yet available) |
 
 ### AI commands (via the `claude` CLI)

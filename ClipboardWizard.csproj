@@ -19,9 +19,12 @@
     <ApplicationIcon>assets\clipwiz.ico</ApplicationIcon>
   </PropertyGroup>
 
-  <!-- Ship the icon next to the exe so the tray can load it at runtime. -->
+  <!-- Ship the icon + Hawk sound next to the exe so they load at runtime. -->
   <ItemGroup>
     <Content Include="assets\clipwiz.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="assets\hit.wav">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

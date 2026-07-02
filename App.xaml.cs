@@ -13,6 +13,10 @@ public partial class App : Application
     private CommandRegistry? _registry;
     private CommandPopup? _popup;
     private Forms.NotifyIcon? _tray;
+    private Forms.ToolStripMenuItem? _hawkFlush;
+    private Forms.ToolStripMenuItem? _hawkCancel;
+    private Forms.ToolStripMenuItem? _cycleStop;
+    private bool _hawkWasActive;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -40,7 +44,14 @@ public partial class App : Application
         _monitor.ClipboardChanged += OnClipboardChanged;
         _monitor.Start();
 
+        // Background features (Hawk, Cycle) write the clipboard outside a command, so give them the
+        // same self-write suppression the commands get.
+        AppState.SuppressNextClipboardChange = () => _monitor.SuppressNext();
+
         SetupTray();
+
+        Hawk.Changed = UpdateModeTray;
+        CycleClipboard.Changed = UpdateModeTray;
     }
 
     private void OnClipboardChanged(object? sender, EventArgs e)
@@ -53,6 +64,19 @@ public partial class App : Application
     private void ShowPopup()
     {
         var payload = ClipboardPayload.Capture();
+
+        // Clipboard Hawk swallows the change: record it, no popup.
+        if (Hawk.Active)
+        {
+            Hawk.Capture(payload);
+            return;
+        }
+
+        // A genuine copy during a cycle ends it (our own fragment writes are suppressed, so they
+        // never reach here).
+        if (CycleClipboard.Active)
+            CycleClipboard.Stop();
+
         var commands = _registry!.GetCommands(payload);
         if (commands.Count == 0)
             return;
@@ -87,6 +111,12 @@ public partial class App : Application
             Visible = true,
             Text = "Clipboard Wizard",
         };
+        // Left-click flushes an active Clipboard Hawk.
+        _tray.MouseClick += (_, ev) =>
+        {
+            if (ev.Button == Forms.MouseButtons.Left && Hawk.Active)
+                Hawk.Flush();
+        };
 
         var menu = new Forms.ContextMenuStrip();
 
@@ -103,9 +133,49 @@ public partial class App : Application
         {
             System.Diagnostics.Process.Start("explorer.exe", _registry!.ScriptsDirectory);
         });
+
+        menu.Items.Add(new Forms.ToolStripSeparator());
+        _hawkFlush = new Forms.ToolStripMenuItem("Flush Clipboard Hawk", null, (_, _) => Hawk.Flush()) { Enabled = false };
+        _hawkCancel = new Forms.ToolStripMenuItem("Cancel Clipboard Hawk", null, (_, _) => Hawk.Cancel()) { Enabled = false };
+        _cycleStop = new Forms.ToolStripMenuItem("Stop Cycle Clipboard", null, (_, _) => CycleClipboard.Stop()) { Enabled = false };
+        menu.Items.Add(_hawkFlush);
+        menu.Items.Add(_hawkCancel);
+        menu.Items.Add(_cycleStop);
+
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
         _tray.ContextMenuStrip = menu;
+    }
+
+    /// <summary>Refresh the tray for Hawk/Cycle state (enabled items, counts, tooltip, balloon).</summary>
+    private void UpdateModeTray()
+    {
+        if (_tray is null)
+            return;
+
+        if (_hawkFlush is not null)
+        {
+            _hawkFlush.Enabled = Hawk.Active;
+            _hawkFlush.Text = Hawk.Active ? $"Flush Clipboard Hawk ({Hawk.Count})" : "Flush Clipboard Hawk";
+        }
+        if (_hawkCancel is not null)
+            _hawkCancel.Enabled = Hawk.Active;
+        if (_cycleStop is not null)
+        {
+            _cycleStop.Enabled = CycleClipboard.Active;
+            _cycleStop.Text = CycleClipboard.Active
+                ? $"Stop Cycle ({CycleClipboard.Position}/{CycleClipboard.Total})"
+                : "Stop Cycle Clipboard";
+        }
+
+        var tip = Hawk.Active ? $"Clipboard Hawk: {Hawk.Count} item(s) — click to flush"
+            : CycleClipboard.Active ? $"Cycle: {CycleClipboard.Position}/{CycleClipboard.Total} — Ctrl+V for next"
+            : "Clipboard Wizard";
+        _tray.Text = tip.Length > 63 ? tip[..63] : tip;
+
+        if (Hawk.Active && !_hawkWasActive)
+            _tray.ShowBalloonTip(2500, "Clipboard Hawk", "Recording copies. Click the tray icon to flush.", Forms.ToolTipIcon.Info);
+        _hawkWasActive = Hawk.Active;
     }
 
     private static System.Drawing.Icon LoadTrayIcon()

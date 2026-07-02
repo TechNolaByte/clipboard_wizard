@@ -69,8 +69,8 @@ public sealed class CommandRegistry
 
         // On the roadmap — visible stubs so the menu reflects the full plan:
         yield return new NotImplementedCommand("Log to Obsidian daily journal");
-        yield return new NotImplementedCommand("Clipboard Hawk (record stack)");
-        yield return new NotImplementedCommand("Cycle Clipboard (fragment + paste)");
+        yield return new HawkCommand();
+        yield return new CycleClipboardCommand();
         yield return new NotImplementedCommand("Auto-format and print");
     }
 

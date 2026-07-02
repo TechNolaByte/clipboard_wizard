@@ -57,8 +57,15 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
   takes an optional `context` string that shows a read-only preview of what will be sent to the AI.
 - `Services/SingleInstance.cs` — named mutex/events; new launch overrides the old one (asks first if busy).
 - `Services/AppState.cs` — runtime toggles (Verbose).
-- `Services/Terminal.cs` — opens terminals, preferring Tabby (`Tabby.exe run …`); used by "Act with" and verbose.
+- `Services/Terminal.cs` — opens an interactive terminal running a **script file** (Tabby if present,
+  else PowerShell). Always a `-File` launch with a space-free path: Tabby's `run` re-tokenizes args,
+  so passing a command with spaces/quotes/newlines inline gets mangled — the complex content lives in
+  the script. Used by "Act with" and verbose.
 - `Services/VerboseRunner.cs` — verbose mode: runs a step in a visible terminal (observational; not applied).
+- `Services/Hawk.cs` — Clipboard Hawk: while active, App routes clipboard changes here (record + hit
+  sound + tray count) instead of showing the popup; flush joins the stack back onto the clipboard.
+- `Services/CycleClipboard.cs` — Cycle Clipboard: splits text into fragments and advances on each
+  Ctrl+V via a `WH_KEYBOARD_LL` hook installed only while a cycle is active.
 - `UI/StatusToast.cs` — small non-activating "…running/processing…" chip shown near the cursor during a command.
 
 Text/script commands accept **unrecognized files by path**: `ClipboardPayload.PrimaryText` returns the
@@ -91,8 +98,8 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 | Act with… — opens interactive Claude Code in a Tabby terminal (normal permissions, no stakes dialog) | Actions | ✅ implemented (`ActWithCommand`) |
 | Send to peers — runs the clipboard content on the fleet (`fleet.ps1 run`, optional `-Only`) | Actions | ✅ implemented (`SendToPeersCommand`) |
 | Log to Obsidian daily journal | Actions | ⬜ stub |
-| Clipboard Hawk — hide popup, record stack to a tray icon, flush on click | Actions | ⬜ stub (see `docs/prior-art.md`; `assets/hit.wav`) |
-| Cycle Clipboard — fragment input, advance silently on each paste | Actions | ⬜ stub (reference algorithm in `docs/prior-art.md`) |
+| Clipboard Hawk — suppress popup, record copies to a stack (hit sound + tray count), flush from the tray | Actions | ✅ implemented (`HawkCommand`, `Services/Hawk.cs`) |
+| Cycle Clipboard — split into fragments; each Ctrl+V pastes the next (low-level keyboard hook) | Actions | ✅ implemented (`CycleClipboardCommand`, `Services/CycleClipboard.cs`) |
 | Auto-format and print | Actions | ⬜ stub (printer not yet available) |
 
 ### AI commands (via the `claude` CLI)

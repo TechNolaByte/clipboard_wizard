@@ -18,6 +18,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Show a dialog (and log) instead of dying silently on an unhandled exception.
+        CrashHandler.Install();
+
         // Single-instance: a new launch overrides the previous one (asking first if it's busy).
         SingleInstance.QuitRequested = () => Dispatcher.BeginInvoke(new Action(Shutdown));
         if (!SingleInstance.TryStart())

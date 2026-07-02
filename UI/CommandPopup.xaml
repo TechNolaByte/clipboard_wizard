@@ -33,6 +33,23 @@
                      BorderBrush="#3A3D48" BorderThickness="1" Padding="6,4" FontSize="13"
                      TextChanged="FilterBox_TextChanged" />
 
+            <!-- Lightweight preview of the current clipboard content: monospace text for text/files,
+                 a thumbnail for images. Non-interactive so it never steals keyboard focus. -->
+            <Border x:Name="PreviewBorder" Visibility="Collapsed"
+                    Background="#15161C" BorderBrush="#2A2C36" BorderThickness="1"
+                    CornerRadius="4" Margin="0,6,0,0" Padding="6">
+                <StackPanel>
+                    <TextBox x:Name="PreviewText" Visibility="Collapsed"
+                             IsReadOnly="True" IsHitTestVisible="False"
+                             Background="Transparent" Foreground="#C8CDD6" BorderThickness="0"
+                             FontFamily="Cascadia Mono, Consolas, Courier New" FontSize="11.5"
+                             MaxHeight="120" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+                    <Image x:Name="PreviewImage" Visibility="Collapsed"
+                           MaxHeight="140" Stretch="Uniform" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
+
             <ListBox x:Name="CommandList"
                      MaxHeight="360" Margin="0,6,0,0"
                      Background="Transparent" BorderThickness="0"

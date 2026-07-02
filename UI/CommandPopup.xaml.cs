@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Data;
@@ -7,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using ClipboardWizard.Interop;
 using ClipboardWizard.Models;
+using ClipboardWizard.Services;
 
 namespace ClipboardWizard.UI;
 
@@ -40,12 +42,78 @@ public partial class CommandPopup : Window
         _view.Filter = FilterPredicate;
         CommandList.ItemsSource = _view;
 
+        BuildPreview(payload);
         SelectFirst();
 
         Loaded += (_, _) => FilterBox.Focus();
         ContentRendered += OnContentRendered;
         Deactivated += (_, _) => Close(); // dismiss when focus leaves the popup
         PreviewKeyDown += OnPreviewKeyDown;
+    }
+
+    // ---- Preview: show the current clipboard content above the command list ----
+    private void BuildPreview(ClipboardPayload payload)
+    {
+        if (payload.HasImage)
+        {
+            PreviewImage.Source = payload.Image;
+            ShowPreview(image: true);
+            return;
+        }
+
+        var imageFile = payload.Files?.FirstOrDefault(ImageIO.IsImageFile);
+        if (imageFile is not null)
+        {
+            try
+            {
+                PreviewImage.Source = ImageIO.Load(imageFile);
+                ShowPreview(image: true);
+                return;
+            }
+            catch
+            {
+                // Unreadable image — fall through to a text listing.
+            }
+        }
+
+        if (payload.HasText)
+        {
+            PreviewText.Text = Truncate(payload.Text!, maxLines: 12, maxChars: 800);
+            ShowPreview(image: false);
+            return;
+        }
+
+        if (payload.HasFiles)
+        {
+            PreviewText.Text = string.Join('\n', payload.Files!.Select(Path.GetFileName));
+            ShowPreview(image: false);
+        }
+    }
+
+    private void ShowPreview(bool image)
+    {
+        PreviewBorder.Visibility = Visibility.Visible;
+        PreviewImage.Visibility = image ? Visibility.Visible : Visibility.Collapsed;
+        PreviewText.Visibility = image ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static string Truncate(string text, int maxLines, int maxChars)
+    {
+        var t = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        var truncated = false;
+
+        var lines = t.Split('\n');
+        if (lines.Length > maxLines)
+        {
+            t = string.Join('\n', lines.Take(maxLines));
+            truncated = true;
+        }
+        if (t.Length > maxChars)
+        {
+            t = t[..maxChars];
+            truncated = true;
+        }
+        return truncated ? t.TrimEnd() + "\n…" : t;
     }
 
     private bool FilterPredicate(object obj)

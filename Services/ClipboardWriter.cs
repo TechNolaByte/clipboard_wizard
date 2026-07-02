@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Media.Imaging;
 
 namespace ClipboardWizard.Services;
 
@@ -18,6 +19,22 @@ public static class ClipboardWriter
             try
             {
                 Clipboard.SetText(text ?? string.Empty);
+                return;
+            }
+            catch (COMException)
+            {
+                Thread.Sleep(40);
+            }
+        }
+    }
+
+    public static void SetImage(BitmapSource image)
+    {
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            try
+            {
+                Clipboard.SetImage(image);
                 return;
             }
             catch (COMException)

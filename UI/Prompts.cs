@@ -20,20 +20,21 @@ public static class Prompts
     /// <summary>Prompt for a line (or paragraph) of text. Returns null if cancelled.</summary>
     public static string? AskText(string title, string message, string initial = "", bool multiline = false)
     {
-        var win = NewWindow(title, multiline ? 200 : 150);
+        var win = NewWindow(title, multiline ? 440 : 300);
 
-        var root = new DockPanel { Margin = new Thickness(14) };
+        var root = new DockPanel { Margin = new Thickness(16) };
 
         var label = new TextBlock
         {
             Text = message,
             Foreground = Fg,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 10),
-            FontSize = 13,
+            Margin = new Thickness(0, 0, 0, 12),
+            FontSize = 14,
         };
         DockPanel.SetDock(label, Dock.Top);
 
+        string? result = null;
         var box = new TextBox
         {
             Text = initial,
@@ -42,36 +43,51 @@ public static class Prompts
             CaretBrush = Fg,
             BorderBrush = Border,
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(6, 4, 6, 4),
-            FontSize = 13,
-            AcceptsReturn = multiline,
-            TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
-            VerticalScrollBarVisibility = multiline ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled,
-            MinHeight = multiline ? 80 : 0,
+            Padding = new Thickness(8, 6, 8, 6),
+            FontSize = 14,
+            AcceptsReturn = true,               // resizable multi-line editor for all prompts
+            TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            MinHeight = multiline ? 150 : 84,
         };
 
-        string? result = null;
-        var buttons = ButtonRow(
-            ("Cancel", () => win.Close()),
-            ("OK", () => { result = box.Text; win.DialogResult = true; win.Close(); }));
+        void Submit()
+        {
+            result = box.Text;
+            win.DialogResult = true;
+            win.Close();
+        }
+
+        var buttons = ButtonRow(("Cancel", () => win.Close()), ("OK", Submit));
         DockPanel.SetDock(buttons, Dock.Bottom);
+
+        var hint = new TextBlock
+        {
+            Text = "Enter to submit  ·  Shift+Enter for a new line  ·  Esc to cancel",
+            Foreground = Border,
+            FontSize = 11,
+            Margin = new Thickness(0, 10, 0, 8),
+        };
+        DockPanel.SetDock(hint, Dock.Bottom);
 
         root.Children.Add(label);
         root.Children.Add(buttons);
+        root.Children.Add(hint);
         root.Children.Add(box); // fills remaining space
         win.Content = root;
 
         box.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
-        box.KeyDown += (_, e) =>
+        box.PreviewKeyDown += (_, e) =>
         {
-            if (e.Key == System.Windows.Input.Key.Enter && (!multiline || System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.Control))
+            if (e.Key == System.Windows.Input.Key.Enter &&
+                (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) == 0)
             {
-                result = box.Text;
-                win.DialogResult = true;
-                win.Close();
+                e.Handled = true;
+                Submit();
             }
             else if (e.Key == System.Windows.Input.Key.Escape)
             {
+                e.Handled = true;
                 win.Close();
             }
         };
@@ -87,8 +103,8 @@ public static class Prompts
     /// <summary>Show a (potentially long) result with Copy + Close.</summary>
     public static void ShowResult(string title, string text)
     {
-        var win = NewWindow(title, 360);
-        win.Width = 520;
+        var win = NewWindow(title, 460);
+        win.Width = 640;
 
         var root = new DockPanel { Margin = new Thickness(14) };
 
@@ -121,8 +137,10 @@ public static class Prompts
     private static Window NewWindow(string title, double height) => new()
     {
         Title = title,
-        Width = 440,
+        Width = 560,
         Height = height,
+        MinWidth = 380,
+        MinHeight = 200,
         Background = Bg,
         WindowStartupLocation = WindowStartupLocation.CenterScreen,
         ResizeMode = ResizeMode.CanResize,

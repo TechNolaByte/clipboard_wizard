@@ -1,3 +1,4 @@
+using ClipboardWizard.Commands;
 using ClipboardWizard.Models;
 
 namespace ClipboardWizard.UI;
@@ -11,6 +12,12 @@ public sealed class CommandItem
     public required int Index { get; init; }
 
     public string Display => Command.Name;
+
+    /// <summary>True for user Python scripts, which get a delete button in the popup.</summary>
+    public bool IsScript => Command is PythonScriptCommand;
+
+    /// <summary>The .py path for a script command (null otherwise).</summary>
+    public string? ScriptPath => (Command as PythonScriptCommand)?.ScriptPath;
 
     public string Group => Command.Category switch
     {

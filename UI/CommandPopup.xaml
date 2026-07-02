@@ -13,6 +13,7 @@
         Width="440">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <Style x:Key="GroupHeaderStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#7AA2F7" />
             <Setter Property="FontSize" Value="10" />
@@ -65,18 +66,26 @@
                                 <TextBlock Text="{Binding Name}" Style="{StaticResource GroupHeaderStyle}" />
                             </DataTemplate>
                         </GroupStyle.HeaderTemplate>
+                        <!-- Two-column flow within each group. -->
+                        <GroupStyle.Panel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </GroupStyle.Panel>
                     </GroupStyle>
                 </ListBox.GroupStyle>
 
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="Padding" Value="6,3" />
+                        <Setter Property="Width" Value="198" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         <EventSetter Event="PreviewMouseLeftButtonUp" Handler="Item_Click" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
                                     <Border x:Name="Bd" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                        <ContentPresenter />
+                                        <ContentPresenter HorizontalAlignment="Stretch" />
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsSelected" Value="True">
@@ -94,7 +103,21 @@
 
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding Display}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <!-- Delete button for user scripts (hidden for everything else). -->
+                            <Button Grid.Column="1" Content="✕" ToolTip="Delete this script"
+                                    Click="DeleteScript_Click" Focusable="False"
+                                    Visibility="{Binding IsScript, Converter={StaticResource BoolToVis}}"
+                                    Width="18" Height="18" Padding="0" Margin="6,0,0,0"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="#C05C6A" Cursor="Hand" FontSize="11" />
+                        </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>

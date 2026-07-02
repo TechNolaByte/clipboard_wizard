@@ -1,11 +1,14 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using ClipboardWizard.Interop;
 using ClipboardWizard.Models;
 using ClipboardWizard.Services;
@@ -20,8 +23,10 @@ public partial class CommandPopup : Window
 {
     private readonly ClipboardPayload _payload;
     private readonly CommandContext _context;
+    private readonly ObservableCollection<CommandItem> _items;
     private readonly ICollectionView _view;
     private bool _isClosing;
+    private bool _ignoreDeactivate;
 
     public CommandPopup(ClipboardPayload payload, IReadOnlyList<IClipboardCommand> commands, CommandContext context)
     {
@@ -30,11 +35,10 @@ public partial class CommandPopup : Window
         _payload = payload;
         _context = context;
 
-        var items = commands
-            .Select((c, i) => new CommandItem { Command = c, Index = i })
-            .ToList();
+        _items = new ObservableCollection<CommandItem>(
+            commands.Select((c, i) => new CommandItem { Command = c, Index = i }));
 
-        _view = CollectionViewSource.GetDefaultView(items);
+        _view = CollectionViewSource.GetDefaultView(_items);
         _view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(CommandItem.Group)));
         // Group order first, then original index — keeps "newest script on top" intact.
         _view.SortDescriptions.Add(new SortDescription(nameof(CommandItem.GroupOrder), ListSortDirection.Ascending));
@@ -47,8 +51,59 @@ public partial class CommandPopup : Window
 
         Loaded += (_, _) => FilterBox.Focus();
         ContentRendered += OnContentRendered;
-        Deactivated += (_, _) => Close(); // dismiss when focus leaves the popup
+        Deactivated += OnDeactivated; // dismiss when focus leaves the popup
         PreviewKeyDown += OnPreviewKeyDown;
+    }
+
+    private void OnDeactivated(object? sender, EventArgs e)
+    {
+        // Don't self-close while a modal (e.g. the delete confirmation) is up.
+        if (!_ignoreDeactivate)
+            Close();
+    }
+
+    // ---- Script delete (the ✕ button on user scripts) ----
+    private void DeleteScript_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not FrameworkElement { DataContext: CommandItem item } || item.ScriptPath is not { } path)
+            return;
+
+        _ignoreDeactivate = true;
+        try
+        {
+            var confirm = MessageBox.Show(
+                $"Delete the script “{item.Display}”?\n\n{path}",
+                "Clipboard Wizard", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+                _items.Remove(item);
+                SelectFirst();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Couldn't delete the script:\n{ex.Message}", "Clipboard Wizard",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        finally
+        {
+            _ignoreDeactivate = false;
+            Activate();
+            FilterBox.Focus();
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d is not null and not T)
+            d = VisualTreeHelper.GetParent(d);
+        return d as T;
     }
 
     // ---- Preview: show the current clipboard content above the command list ----
@@ -185,7 +240,11 @@ public partial class CommandPopup : Window
 
     private void Item_Click(object sender, MouseButtonEventArgs e)
     {
-        if (sender is System.Windows.Controls.ListBoxItem { DataContext: CommandItem item })
+        // Ignore clicks that landed on the delete (✕) button — those run DeleteScript_Click.
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) is not null)
+            return;
+
+        if (sender is ListBoxItem { DataContext: CommandItem item })
         {
             CommandList.SelectedItem = item;
             ExecuteSelected();
@@ -218,7 +277,16 @@ public partial class CommandPopup : Window
 
         _isClosing = true;
         Hide(); // get the menu out of the way before the command runs
-        await item.Command.ExecuteAsync(_payload, _context);
-        Close();
+
+        SingleInstance.EnterBusy(); // mark this instance busy so a new launch asks before overriding
+        try
+        {
+            await item.Command.ExecuteAsync(_payload, _context);
+        }
+        finally
+        {
+            SingleInstance.ExitBusy();
+            Close();
+        }
     }
 }

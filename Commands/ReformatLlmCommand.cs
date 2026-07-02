@@ -7,8 +7,9 @@ using ClipboardWizard.UI;
 namespace ClipboardWizard.Commands;
 
 /// <summary>
-/// "Reformat in situ — LLM": ask for a reformat instruction, pipe the clipboard text through a
-/// lean, tool-less <c>claude</c> (Sonnet) run, and replace the clipboard with the result.
+/// "Reformat in situ — LLM": ask for a reformat instruction, pipe the clipboard content (text, or
+/// a file path for unrecognized files) through a lean, safe-mode <c>claude</c> (Sonnet) run, and
+/// replace the clipboard with the result.
 /// </summary>
 public sealed class ReformatLlmCommand : IClipboardCommand
 {
@@ -21,21 +22,31 @@ public sealed class ReformatLlmCommand : IClipboardCommand
 
     public CommandCategory Category => CommandCategory.Action;
 
-    public bool CanExecute(ClipboardPayload payload) => payload.HasText;
+    public bool CanExecute(ClipboardPayload payload) => payload.HasInput;
 
     public async Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
     {
-        if (!payload.HasText)
+        var input = payload.PrimaryText;
+        if (input is null)
             return;
 
-        var spec = Prompts.AskText("Reformat — LLM", "How should I reformat the clipboard text?");
+        var spec = Prompts.AskText("Reformat — LLM",
+            "How should I reformat the clipboard content?",
+            context: Preview(payload, input));
         if (string.IsNullOrWhiteSpace(spec))
             return;
 
+        if (AppState.Verbose)
+        {
+            VerboseRunner.Run("Reformat — LLM", ClaudeCli.Executable, ClaudeCli.TextArgs(spec, SystemPrompt), input);
+            return;
+        }
+
         ClaudeResult result;
+        StatusToast.Show("Reformat — LLM · Claude processing…");
         try
         {
-            result = await ClaudeCli.RunTextAsync(spec, payload.Text, SystemPrompt);
+            result = await ClaudeCli.RunTextAsync(spec, input, SystemPrompt);
         }
         catch (Exception ex)
         {
@@ -43,11 +54,15 @@ public sealed class ReformatLlmCommand : IClipboardCommand
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
+        finally
+        {
+            StatusToast.Hide();
+        }
 
         var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}";
         if (!result.Success || string.IsNullOrEmpty(result.Output))
         {
-            ActionLog.Write("Reformat — LLM", spec, payload.Text, null, processLog, null, null);
+            ActionLog.Write("Reformat — LLM", spec, input, null, processLog, null, null);
             MessageBox.Show($"Reformat failed:\n{result.FailureMessage}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -55,6 +70,14 @@ public sealed class ReformatLlmCommand : IClipboardCommand
 
         context.SuppressNextClipboardChange();
         ClipboardWriter.SetText(result.Output);
-        ActionLog.Write("Reformat — LLM", spec, payload.Text, null, processLog, result.Output, null);
+        ActionLog.Write("Reformat — LLM", spec, input, null, processLog, result.Output, null);
+    }
+
+    /// <summary>A short preview of what will be sent as context, noting when it's a file path.</summary>
+    internal static string Preview(ClipboardPayload payload, string input)
+    {
+        var header = payload.HasText ? "(clipboard text)\n" : "(file path — the file itself is not read here)\n";
+        var body = input.Length > 1200 ? input[..1200] + "\n…" : input;
+        return header + body;
     }
 }

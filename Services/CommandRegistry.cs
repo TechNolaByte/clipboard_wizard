@@ -65,10 +65,9 @@ public sealed class CommandRegistry
         yield return new ReformatLlmCommand();
         yield return new ReformatPythonScriptCommand(_scriptsDir);
         yield return new ActWithCommand();
+        yield return new SendToPeersCommand();
 
         // On the roadmap — visible stubs so the menu reflects the full plan:
-        yield return new NotImplementedCommand("Execute on Tailscale peer");
-        yield return new NotImplementedCommand("Execute on all computers");
         yield return new NotImplementedCommand("Log to Obsidian daily journal");
         yield return new NotImplementedCommand("Clipboard Hawk (record stack)");
         yield return new NotImplementedCommand("Cycle Clipboard (fragment + paste)");

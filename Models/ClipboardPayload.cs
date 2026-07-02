@@ -20,6 +20,15 @@ public sealed class ClipboardPayload
     public bool HasImage => Image is not null;
     public bool HasFiles => Files is { Length: > 0 };
 
+    /// <summary>True when there's something a text/script command can act on.</summary>
+    public bool HasInput => HasText || HasFiles;
+
+    /// <summary>
+    /// The input handed to text/script commands: the clipboard text if present, otherwise the
+    /// file path(s) (one per line). This lets commands operate on unrecognized files by path.
+    /// </summary>
+    public string? PrimaryText => HasText ? Text : (HasFiles ? string.Join('\n', Files!) : null);
+
     /// <summary>
     /// Reads the clipboard with a few retries. The clipboard is a shared, frequently-locked
     /// resource, so the first read right after a change often throws — we back off and retry.

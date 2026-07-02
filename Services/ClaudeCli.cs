@@ -85,6 +85,17 @@ public static class ClaudeCli
     /// instruction is the prompt; <paramref name="appendSystemPrompt"/> constrains output shape.
     /// Returns trimmed stdout.
     /// </summary>
+    /// <summary>Args for a lean text transform (shared by the headless and verbose paths).</summary>
+    public static List<string> TextArgs(string prompt, string appendSystemPrompt, string model = "sonnet") => new()
+    {
+        "-p", "--model", model,
+        "--safe-mode",              // no CLAUDE.md/skills/hooks/MCP; auth + built-in tools stay
+        "--no-session-persistence",
+        "--tools", "",
+        "--append-system-prompt", WithMemory(appendSystemPrompt),
+        prompt,
+    };
+
     public static async Task<ClaudeResult> RunTextAsync(
         string prompt,
         string? stdin,
@@ -92,16 +103,7 @@ public static class ClaudeCli
         string model = "sonnet",
         CancellationToken ct = default)
     {
-        var args = new List<string>
-        {
-            "-p", "--model", model,
-            "--safe-mode",              // no CLAUDE.md/skills/hooks/MCP; auth + built-in tools stay
-            "--no-session-persistence",
-            "--tools", "",
-            "--append-system-prompt", WithMemory(appendSystemPrompt),
-            prompt,
-        };
-        var r = await Proc.RunAsync(Executable, args, stdin, AppPaths.WorkingRoot, ct: ct);
+        var r = await Proc.RunAsync(Executable, TextArgs(prompt, appendSystemPrompt, model), stdin, AppPaths.WorkingRoot, ct: ct);
         return ClaudeResult.From(r);
     }
 
@@ -109,11 +111,8 @@ public static class ClaudeCli
     /// Vision describe: the CLI has no image flag, so we let it view a local file through the Read
     /// tool. Only Read is enabled, so running under bypassPermissions is safe (it can't edit/run).
     /// </summary>
-    public static async Task<ClaudeResult> RunVisionReadAsync(
-        string prompt,
-        string allowDir,
-        string model = "sonnet",
-        CancellationToken ct = default)
+    /// <summary>Args for a vision describe (shared by the headless and verbose paths).</summary>
+    public static List<string> VisionArgs(string prompt, string allowDir, string model = "sonnet")
     {
         var args = new List<string>
         {
@@ -131,8 +130,16 @@ public static class ClaudeCli
             args.Add(memory);
         }
         args.Add(prompt);
+        return args;
+    }
 
-        var r = await Proc.RunAsync(Executable, args, null, AppPaths.WorkingRoot, ct: ct);
+    public static async Task<ClaudeResult> RunVisionReadAsync(
+        string prompt,
+        string allowDir,
+        string model = "sonnet",
+        CancellationToken ct = default)
+    {
+        var r = await Proc.RunAsync(Executable, VisionArgs(prompt, allowDir, model), null, AppPaths.WorkingRoot, ct: ct);
         return ClaudeResult.From(r);
     }
 

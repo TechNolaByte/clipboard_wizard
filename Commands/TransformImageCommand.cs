@@ -28,7 +28,10 @@ public sealed class TransformImageCommand : IClipboardCommand
     {
         var spec = Prompts.AskText("Transform image",
             "Describe the transformation, e.g. 'resize to 800px wide', 'convert to grayscale', " +
-            "'rotate 90° clockwise', 'crop to a centered square'.");
+            "'rotate 90° clockwise', 'crop to a centered square'.",
+            context: "Applies to the clipboard image. Claude receives your description (not the image " +
+                     "itself) and returns command-line arguments for the bundled image tool, which is " +
+                     "then run on the image.");
         if (string.IsNullOrWhiteSpace(spec))
             return;
 
@@ -80,17 +83,27 @@ public sealed class TransformImageCommand : IClipboardCommand
             $"{toolName}, produce valid arguments (e.g. for magick: '{{IN}} -resize 800x {{OUT}}'; " +
             "for ffmpeg: '-i {IN} -vf scale=800:-1 {OUT}').";
 
+        if (AppState.Verbose)
+        {
+            VerboseRunner.Run("Transform image (derive args)", ClaudeCli.Executable,
+                ClaudeCli.TextArgs(spec, systemPrompt), null);
+            return;
+        }
+
         ClaudeResult gen;
+        StatusToast.Show("Transform image · Claude deriving args…");
         try
         {
             gen = await ClaudeCli.RunTextAsync(spec, null, systemPrompt);
         }
         catch (Exception ex)
         {
+            StatusToast.Hide();
             MessageBox.Show($"Couldn't run claude:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
+        StatusToast.Hide();
 
         if (!gen.Success || string.IsNullOrWhiteSpace(gen.Output))
         {
@@ -102,6 +115,7 @@ public sealed class TransformImageCommand : IClipboardCommand
         var args = BuildArgs(gen.Output, toolName, inPath, outPath);
 
         ProcResult run;
+        StatusToast.Show($"Transform image · running {toolName}…");
         try
         {
             run = await Proc.RunAsync(tool, args, workingDir: AppPaths.ScratchpadDir);
@@ -111,6 +125,10 @@ public sealed class TransformImageCommand : IClipboardCommand
             MessageBox.Show($"Couldn't run {toolName}:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
+        }
+        finally
+        {
+            StatusToast.Hide();
         }
 
         var processLog =

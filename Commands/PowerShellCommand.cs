@@ -18,11 +18,12 @@ public sealed class PowerShellCommand : IClipboardCommand
 
     public CommandCategory Category => CommandCategory.Action;
 
-    public bool CanExecute(ClipboardPayload payload) => payload.HasText;
+    public bool CanExecute(ClipboardPayload payload) => payload.HasInput;
 
     public Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
     {
-        if (!payload.HasText)
+        var content = payload.PrimaryText;
+        if (content is null)
             return Task.CompletedTask;
 
         try
@@ -31,7 +32,7 @@ public sealed class PowerShellCommand : IClipboardCommand
             // PowerShell through the command line. The launched shell reads it, pre-fills the
             // prompt via PSReadLine, then deletes the temp file.
             var tempPath = Path.Combine(Path.GetTempPath(), $"clipwiz_{Guid.NewGuid():N}.ps1");
-            File.WriteAllText(tempPath, payload.Text!, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllText(tempPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             var escapedPath = tempPath.Replace("'", "''");
             // Prefill the *interactive* prompt. At -Command time PSReadLine isn't reading yet, so a
@@ -62,7 +63,7 @@ public sealed class PowerShellCommand : IClipboardCommand
 
             ActionLog.Write("Execute as PowerShell",
                 "Open a terminal in the working dir with the code pre-typed (awaiting Enter)",
-                payload.Text, null,
+                content, null,
                 $"Opened terminal in {AppPaths.WorkingRoot}",
                 "(handed to terminal; not transformed here)", null);
         }

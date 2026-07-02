@@ -11,8 +11,8 @@ namespace ClipboardWizard.Commands;
 
 /// <summary>
 /// "Reformat in situ — Python script": ask for a reformat instruction, have Sonnet WRITE a
-/// self-contained stdin→stdout Python script, save it into the scripts folder (so it becomes a
-/// reusable command next time), then run it on the current clipboard text.
+/// self-contained stdin→stdout Python script, save it into the scripts folder (reusable next time)
+/// plus a timestamped copy in the logs folder, then run it on the current clipboard content.
 /// </summary>
 public sealed class ReformatPythonScriptCommand : IClipboardCommand
 {
@@ -30,35 +30,46 @@ public sealed class ReformatPythonScriptCommand : IClipboardCommand
 
     public CommandCategory Category => CommandCategory.Action;
 
-    public bool CanExecute(ClipboardPayload payload) => payload.HasText;
+    public bool CanExecute(ClipboardPayload payload) => payload.HasInput;
 
     public async Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
     {
-        if (!payload.HasText)
+        var input = payload.PrimaryText;
+        if (input is null)
             return;
 
         var spec = Prompts.AskText("Reformat — Python script",
-            "Describe the transformation. Claude will write a reusable Python script, save it to " +
-            "your scripts folder, and run it now.");
+            "Describe the transformation. Claude will write a reusable Python script, save it, and run it now.",
+            context: ReformatLlmCommand.Preview(payload, input));
         if (string.IsNullOrWhiteSpace(spec))
             return;
 
-        ClaudeResult result;
+        if (AppState.Verbose)
+        {
+            VerboseRunner.Run("Reformat — Python script (generation)",
+                ClaudeCli.Executable, ClaudeCli.TextArgs(spec, SystemPrompt), null);
+            return;
+        }
+
+        ClaudeResult gen;
+        StatusToast.Show("Reformat — writing Python script…");
         try
         {
-            result = await ClaudeCli.RunTextAsync(spec, null, SystemPrompt);
+            gen = await ClaudeCli.RunTextAsync(spec, null, SystemPrompt);
         }
         catch (Exception ex)
         {
+            StatusToast.Hide();
             MessageBox.Show($"Couldn't run claude:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
-        var script = StripCodeFences(result.Output);
-        if (!result.Success || string.IsNullOrWhiteSpace(script))
+        var script = StripCodeFences(gen.Output);
+        if (!gen.Success || string.IsNullOrWhiteSpace(script))
         {
-            MessageBox.Show($"Script generation failed:\n{result.FailureMessage}", "Clipboard Wizard",
+            StatusToast.Hide();
+            MessageBox.Show($"Script generation failed:\n{gen.FailureMessage}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -68,27 +79,38 @@ public sealed class ReformatPythonScriptCommand : IClipboardCommand
         {
             Directory.CreateDirectory(_scriptsDir);
             var unique = Guid.NewGuid().ToString("N")[..8];
-            scriptPath = Path.Combine(_scriptsDir, $"{Slug(spec)}_{unique}.py");
-            File.WriteAllText(scriptPath, script, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            var fileName = $"{Slug(spec)}_{unique}.py";
+            scriptPath = Path.Combine(_scriptsDir, fileName);
+            var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            File.WriteAllText(scriptPath, script, utf8);
+
+            // Also drop a timestamped copy in the logs folder for a permanent record.
+            var stamp = DateTime.Now.ToString("yyyy-MM-ddTHH-mm-ss");
+            File.WriteAllText(Path.Combine(AppPaths.LogsDir, $"{stamp}_{fileName}"), script, utf8);
         }
         catch (Exception ex)
         {
+            StatusToast.Hide();
             MessageBox.Show($"Couldn't save the script:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
-        // Run the generated script now (it's also saved for reuse via the Scripts group).
         ProcResult run;
+        StatusToast.Show("Reformat — running the new script…");
         try
         {
-            run = await PythonScriptCommand.RunScriptAsync(scriptPath, payload.Text!);
+            run = await PythonScriptCommand.RunScriptAsync(scriptPath, input);
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Saved the script but couldn't run it:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
+        }
+        finally
+        {
+            StatusToast.Hide();
         }
 
         var processLog =
@@ -97,7 +119,7 @@ public sealed class ReformatPythonScriptCommand : IClipboardCommand
 
         if (!run.Ok)
         {
-            ActionLog.Write("Reformat — Python script", spec, payload.Text, null, processLog, null, null);
+            ActionLog.Write("Reformat — Python script", spec, input, null, processLog, null, null);
             MessageBox.Show($"The generated script exited with code {run.ExitCode}:\n{run.StdErr}",
                 "Clipboard Wizard", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -105,7 +127,7 @@ public sealed class ReformatPythonScriptCommand : IClipboardCommand
 
         context.SuppressNextClipboardChange();
         ClipboardWriter.SetText(run.StdOut);
-        ActionLog.Write("Reformat — Python script", spec, payload.Text, null, processLog, run.StdOut, null);
+        ActionLog.Write("Reformat — Python script", spec, input, null, processLog, run.StdOut, null);
     }
 
     private static string StripCodeFences(string text)

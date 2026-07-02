@@ -56,7 +56,15 @@ public sealed class DescribeImageCommand : IClipboardCommand
             : $"View the image file at {imagePath} and describe it in about 3 sentences. " +
               "Output only the description, nothing else.";
 
+        if (AppState.Verbose)
+        {
+            VerboseRunner.Run(Name, ClaudeCli.Executable,
+                ClaudeCli.VisionArgs(instruction, AppPaths.ScratchpadDir), null);
+            return;
+        }
+
         ClaudeResult result;
+        StatusToast.Show($"{Name} · Claude processing…");
         try
         {
             result = await ClaudeCli.RunVisionReadAsync(instruction, AppPaths.ScratchpadDir);
@@ -66,6 +74,10 @@ public sealed class DescribeImageCommand : IClipboardCommand
             MessageBox.Show($"Couldn't run claude:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return;
+        }
+        finally
+        {
+            StatusToast.Hide();
         }
 
         var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}";

@@ -9,90 +9,71 @@ using ClipboardWizard.UI;
 namespace ClipboardWizard.Commands;
 
 /// <summary>
-/// "Act with…": run Claude Code agentically on the clipboard content with full tool access
-/// (computer-control auto mode). Stakes are clarified up front (instruction + explicit
-/// confirmation), and the captured output — which is asked to end with a "Changes made" summary —
-/// is shown afterwards so the user knows what happened.
+/// "Act with…": open an interactive Claude Code session in a Tabby terminal, pointed at the
+/// clipboard content plus the user's instruction. It runs with normal permissions (auto mode —
+/// it asks before risky actions) so the user stays in control and watches it work in the terminal.
 /// </summary>
 public sealed class ActWithCommand : IClipboardCommand
 {
-    // Inline small payloads; stage large ones to a file so we don't blow the command-line limit.
-    private const int InlineLimit = 8000;
-
     public string Name => "Act with… (Claude Code)";
 
     public CommandCategory Category => CommandCategory.Action;
 
-    public bool CanExecute(ClipboardPayload payload) => payload.HasText || payload.HasFiles || payload.HasImage;
+    public bool CanExecute(ClipboardPayload payload) => payload.HasInput || payload.HasImage;
 
-    public async Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
+    public Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
     {
-        var instruction = Prompts.AskText("Act with… (Claude Code)",
-            "What should Claude do with this clipboard content?\n\n" +
-            "It runs with FULL tool access — it can edit files and run commands.",
-            multiline: true);
-        if (string.IsNullOrWhiteSpace(instruction))
-            return;
-
-        var workingDir = AppPaths.WorkingRoot;
-
-        if (!Prompts.Confirm("Act with — confirm stakes",
-                $"Claude Code will run with FULL permissions (it can edit files and run commands) in:\n" +
-                $"{workingDir}\n\n" +
-                $"Instruction:\n{instruction}\n\nProceed?"))
-            return;
-
         string content;
         try
         {
-            content = DescribeClipboard(payload);
+            content = StageClipboard(payload);
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Couldn't prepare the clipboard content:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
+            return Task.CompletedTask;
         }
 
-        var prompt =
-            $"{instruction}\n\n--- Clipboard content ---\n{content}\n\n" +
-            "When finished, end your reply with a section titled '## Changes made' that lists every " +
-            "file you created, modified, or deleted and every command you ran that had side effects. " +
-            "If you made no changes, say so explicitly.";
+        var instruction = Prompts.AskText("Act with… (Claude Code)",
+            "What should Claude do with this clipboard content?\n\n" +
+            "It opens in a terminal and runs with normal permissions — it will ask before risky actions.",
+            multiline: true,
+            context: content);
+        if (string.IsNullOrWhiteSpace(instruction))
+            return Task.CompletedTask;
 
-        ClaudeResult result;
+        var prompt = $"{instruction}\n\n--- Clipboard content ---\n{content}";
+
         try
         {
-            result = await ClaudeCli.RunAgenticAsync(prompt, workingDir);
+            // Interactive claude in Tabby: no -p, no bypass — auto mode on, follows permissions.
+            Terminal.RunCommand(ClaudeCli.Executable, new[] { "--model", "sonnet", prompt });
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Couldn't run claude:\n{ex.Message}", "Clipboard Wizard",
+            MessageBox.Show($"Couldn't open a Claude terminal:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
+            return Task.CompletedTask;
         }
 
-        var summary = result.Success
-            ? (string.IsNullOrWhiteSpace(result.Output) ? "(claude produced no output)" : result.Output)
-            : $"claude exited with code {result.ExitCode}:\n\n{result.FailureMessage}";
-
         ActionLog.Write("Act with", instruction, content, null,
-            $"stdout:\n{result.Output}\n\nstderr:\n{result.Error}", summary, null);
+            "Opened an interactive Claude Code session in a terminal (normal permissions).",
+            "(interactive — see the terminal)", null);
 
-        Prompts.ShowResult("Act with — result", summary);
+        return Task.CompletedTask;
     }
 
-    private static string DescribeClipboard(ClipboardPayload payload)
+    /// <summary>Return a compact description of the clipboard, staging large text/images to files.</summary>
+    private static string StageClipboard(ClipboardPayload payload)
     {
         if (payload.HasText)
         {
-            if (payload.Text!.Length <= InlineLimit)
+            if (payload.Text!.Length <= 4000)
                 return payload.Text!;
-
             var staged = Path.Combine(AppPaths.ScratchpadDir, $"clipboard_{Guid.NewGuid():N}.txt");
             File.WriteAllText(staged, payload.Text!);
-            return $"(The clipboard text is large; it has been saved to: {staged}\n" +
-                   "Read that file to get the full content.)";
+            return $"(large clipboard text saved to {staged} — read that file)";
         }
 
         if (payload.HasFiles)
@@ -101,8 +82,7 @@ public sealed class ActWithCommand : IClipboardCommand
         if (payload.HasImage)
         {
             var staged = ImageIO.SavePng(payload.Image!, AppPaths.ScratchpadDir);
-            return $"(An image is on the clipboard; it has been saved to: {staged}\n" +
-                   "Read that file if you need to view it.)";
+            return $"(clipboard image saved to {staged} — read that file to view it)";
         }
 
         return "(clipboard is empty)";

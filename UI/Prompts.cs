@@ -17,10 +17,15 @@ public static class Prompts
     private static readonly Brush Border = Brush("#3A3D48");
     private static readonly Brush Accent = Brush("#3D59A1");
 
-    /// <summary>Prompt for a line (or paragraph) of text. Returns null if cancelled.</summary>
-    public static string? AskText(string title, string message, string initial = "", bool multiline = false)
+    /// <summary>
+    /// Prompt for a line (or paragraph) of text. Returns null if cancelled. If <paramref name="context"/>
+    /// is given, a read-only preview of the context that will be sent is shown below the input.
+    /// </summary>
+    public static string? AskText(string title, string message, string initial = "", bool multiline = false, string? context = null)
     {
-        var win = NewWindow(title, multiline ? 440 : 300);
+        var height = multiline ? 440 : 300;
+        if (context is not null) height += 180;
+        var win = NewWindow(title, height);
 
         var root = new DockPanel { Margin = new Thickness(16) };
 
@@ -73,6 +78,8 @@ public static class Prompts
         root.Children.Add(label);
         root.Children.Add(buttons);
         root.Children.Add(hint);
+        if (context is not null)
+            root.Children.Add(BuildContextPanel(context));
         root.Children.Add(box); // fills remaining space
         win.Content = root;
 
@@ -94,6 +101,38 @@ public static class Prompts
 
         win.ShowDialog();
         return win.DialogResult == true ? result : null;
+    }
+
+    private static FrameworkElement BuildContextPanel(string context)
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        DockPanel.SetDock(panel, Dock.Bottom);
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Context that will be sent:",
+            Foreground = Fg,
+            FontSize = 12,
+            Opacity = 0.85,
+            Margin = new Thickness(0, 0, 0, 4),
+        });
+        panel.Children.Add(new TextBox
+        {
+            Text = context,
+            IsReadOnly = true,
+            Focusable = false,             // scrolls but never steals focus from the input
+            Background = Panel,
+            Foreground = Fg,
+            BorderBrush = Border,
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 6, 8, 6),
+            FontFamily = new FontFamily("Cascadia Mono, Consolas, Courier New"),
+            FontSize = 12,
+            MaxHeight = 150,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        });
+        return panel;
     }
 
     /// <summary>Yes/No confirmation. Returns true only on Yes.</summary>

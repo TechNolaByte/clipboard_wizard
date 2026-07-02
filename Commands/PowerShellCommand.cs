@@ -34,10 +34,16 @@ public sealed class PowerShellCommand : IClipboardCommand
             File.WriteAllText(tempPath, payload.Text!, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             var escapedPath = tempPath.Replace("'", "''");
+            // Prefill the *interactive* prompt. At -Command time PSReadLine isn't reading yet, so a
+            // direct Insert no-ops (which is why the shell used to open empty). Defer the Insert to
+            // the first OnIdle — that fires once the interactive prompt is up and PSReadLine is
+            // active, so the text reliably lands in the input buffer, awaiting Enter.
             var bootstrap =
-                "try { Import-Module PSReadLine -ErrorAction Stop; " +
-                $"[Microsoft.PowerShell.PSConsoleReadLine]::Insert([System.IO.File]::ReadAllText('{escapedPath}')) }} catch {{ }} " +
-                $"finally {{ Remove-Item -LiteralPath '{escapedPath}' -ErrorAction SilentlyContinue }}";
+                "$global:__cwCode=[System.IO.File]::ReadAllText('" + escapedPath + "'); " +
+                "Remove-Item -LiteralPath '" + escapedPath + "' -ErrorAction SilentlyContinue; " +
+                "try { Import-Module PSReadLine -ErrorAction Stop } catch {}; " +
+                "$null=Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -MaxTriggerCount 1 " +
+                "-Action { try { [Microsoft.PowerShell.PSConsoleReadLine]::Insert($global:__cwCode) } catch {} }";
 
             var psi = new ProcessStartInfo
             {

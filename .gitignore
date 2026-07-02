@@ -15,3 +15,8 @@ desktop.ini
 
 ## Bundled media binaries (ffmpeg / ImageMagick), downloaded on first use — kept off PATH
 library-dump/
+
+## Working area: transient staging + per-action audit logs (logs hold raw clipboard data).
+## working/config/ (durable memory) and working/CLAUDE.md stay tracked.
+working/scratchpad/
+working/logs/

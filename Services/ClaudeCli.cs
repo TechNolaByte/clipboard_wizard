@@ -48,7 +48,7 @@ public static class ClaudeCli
             "--append-system-prompt", appendSystemPrompt,
             prompt,
         };
-        var r = await Proc.RunAsync(Executable, args, stdin, AppPaths.NeutralDir, ct);
+        var r = await Proc.RunAsync(Executable, args, stdin, AppPaths.WorkingRoot, ct: ct);
         return ClaudeResult.From(r);
     }
 
@@ -71,7 +71,7 @@ public static class ClaudeCli
             "--permission-mode", "bypassPermissions",
             prompt,
         };
-        var r = await Proc.RunAsync(Executable, args, null, allowDir, ct);
+        var r = await Proc.RunAsync(Executable, args, null, AppPaths.WorkingRoot, ct: ct);
         return ClaudeResult.From(r);
     }
 
@@ -91,10 +91,10 @@ public static class ClaudeCli
             "-p", "--model", model,
             "--no-session-persistence",
             "--permission-mode", permissionMode,
-            "--add-dir", AppPaths.WorkDir, // where large clipboard payloads are staged
+            "--add-dir", AppPaths.ScratchpadDir, // where large clipboard payloads are staged
             prompt,
         };
-        var r = await Proc.RunAsync(Executable, args, null, workingDir, ct);
+        var r = await Proc.RunAsync(Executable, args, null, workingDir, ct: ct);
         return ClaudeResult.From(r);
     }
 }

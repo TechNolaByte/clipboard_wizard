@@ -18,6 +18,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        AppPaths.InitializeWorkingArea();
+
         var scriptsDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "ClipboardWizard", "scripts");

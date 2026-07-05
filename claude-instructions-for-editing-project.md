@@ -1,7 +1,8 @@
 # Clipboard Wizard
 
-A Windows-only (WPF, .NET) clipboard power-tool. When the clipboard changes, a small command
-menu pops up at the mouse cursor listing every action available for the current clipboard content.
+A Windows-only (WPF, .NET) clipboard power-tool. A single (fresh) copy is silent; **re-copying the
+same content** (a deliberate second Ctrl+C on the same thing) summons a small command menu at the mouse
+cursor listing every action available for the current clipboard content.
 
 ## Build & run
 
@@ -28,12 +29,16 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
 
 ## Architecture
 
-- `App.xaml.cs` — composition root. Starts `ClipboardMonitor`, owns the tray icon, and shows the
-  `CommandPopup` on each clipboard change.
+- `App.xaml.cs` — composition root. Starts `ClipboardMonitor`, owns the tray icon. `HandleClipboardChange`
+  is the trigger gate: a fresh copy is quiet, and the popup is shown only when the same content is copied
+  again (matching `ClipboardPayload.ContentSignature`, and slower than `RecopyMinGapMs` so an app that
+  writes the clipboard twice for one copy doesn't false-trigger).
 - `Services/ClipboardMonitor.cs` — message-only window + `AddClipboardFormatListener`. Raises
-  `ClipboardChanged`. `SuppressNext()` masks our own writes so self-edits (Cycle/Hawk) don't loop.
+  `ClipboardChanged` on every real change (identical re-copies included — they bump the OS sequence
+  number). `SuppressNext()` masks our own writes so self-edits (Cycle/Hawk) don't loop.
 - `Models/ClipboardPayload.cs` — immutable snapshot of clipboard contents (text/image/files) with
   retry-on-locked capture. Commands inspect `Has*` flags instead of touching the live clipboard.
+  `ContentSignature` (lazy, cached) is the re-copy identity used by the trigger gate.
 - `Models/IClipboardCommand.cs` — the command contract: `Name`, `Category`, `CanExecute(payload)`,
   `ExecuteAsync(payload, context)`. `CommandContext.SuppressNextClipboardChange` must be called
   before any clipboard write.
@@ -42,7 +47,9 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
 - `UI/CommandPopup.xaml(.cs)` — borderless topmost menu. Placed at the cursor in pixel space via
   `SetWindowPos` + per-monitor DPI (robust across multi-monitor); filter box; a **preview panel**
   (monospace text for text/files, a thumbnail for images); keyboard nav (↑/↓ select, Enter run,
-  Esc close); single-click an item to run it; closes on focus loss.
+  Esc close); single-click an item to run it. **Sticky focus:** clicking away doesn't close it — it
+  grabs focus back (re-`Activate` on `Deactivated`) so the next input still lands on it; only Esc or
+  running a command closes it.
 - `Services/ClaudeCli.cs` — wraps the `claude` CLI for all AI features (text transform, vision
   describe, agentic "Act with"). Uses sped-up flags (`-p --no-session-persistence --strict-mcp-config`)
   that don't break OAuth — deliberately **not** `--bare` (which forces API-key auth). Runs in the
@@ -71,10 +78,13 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
   are active) reporting global Ctrl+V / Escape without focus. Never suppresses keys.
 - `UI/ModeOverlay.cs` — the top-left on-screen status card shown while a mode is active (icon, detail,
   optional thumbnail).
-- `Services/HotkeyService.cs` — registers the global **Ctrl+Win+C** hotkey (via `RegisterHotKey` on a
-  hidden tool window) to summon the popup on demand (`App.ShowPopup(force: true)` — shows even when
-  the clipboard is empty). `Registered` is false if the combo is already taken (App warns via the tray).
 - `UI/StatusToast.cs` — small non-activating "…running/processing…" chip shown near the cursor during a command.
+
+> **Retired:** a global **Ctrl+Win+C** hotkey (`Services/HotkeyService.cs`) used to summon the popup
+> on demand. It could never register — Ctrl+Win+C is a reserved Windows *Color Filters* accessibility
+> shortcut, so `RegisterHotKey` returns `ERROR_HOTKEY_ALREADY_REGISTERED` (1409) even with the feature
+> off. The re-copy trigger replaces it; recover the file from git history to rebind to a free combo
+> (e.g. `Ctrl+Alt+C`, `Win+Shift+C`) if wanted.
 
 Text/script commands accept **unrecognized files by path**: `ClipboardPayload.PrimaryText` returns the
 clipboard text, or the file path(s) when there's no text, so scripts/AI can open the file themselves.
@@ -88,11 +98,16 @@ group, and `CanExecute` to gate it to the right payload (text/image/files). Call
 
 ## Command roadmap
 
-Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds an image/image files),
-**Actions** (verbs).
+Categories: **Research** (ask an AI about the clipboard — shown first, so `Ask Claude` is the popup's
+default selection), **Scripts** (in-situ Python), **Image** (only when clipboard holds an image/image
+files), **Actions** (verbs), **Collect** (capture/collection modes). Category → group/order lives in
+`UI/CommandItem.cs`. The "Research" and "Collect" plumbing that opens a Claude terminal is shared in
+`Services/ClaudeSession.cs` (used by both `Ask Claude` and `Act with…`).
 
 | Command | Group | Status |
 |---|---|---|
+| Ask Claude — opens interactive Claude Code with a fixed "tell me about this clipboard context" prompt (no dialog); **default selection** | Research | ✅ implemented (`AskClaudeCommand`) |
+| Search online — clipboard text (or a reverse-image search) in the default browser (Google / Perplexity) | Research | ✅ implemented (`SearchOnlineCommand`; images upload via `Services/ImageHost.cs`) |
 | Python scripts (stdin → stdout, newest first) | Scripts | ✅ implemented (`PythonScriptCommand`) |
 | Execute as PowerShell — opens a terminal with the code pre-typed, awaiting Enter | Actions | ✅ implemented (`PowerShellCommand`) |
 | Split GIF into PNGs | Image | ✅ implemented (ffmpeg, `SplitGifCommand`) |
@@ -100,16 +115,15 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 | .jpg to .png | Image | ✅ implemented (native WPF codecs, `JpgToPngCommand`) |
 | Transform image — NL spec → ImageMagick/ffmpeg args | Image | ✅ implemented (`TransformImageCommand`) |
 | Describe — title (~5 words) / verbose (~3 sentences) | Image | ✅ implemented (Sonnet vision via CLI, `DescribeImageCommand`) |
-| Transcribe (AI) — recreate text from image | Image | ⬜ stub (not yet wired) |
+| Transcribe — exact text in image (verbatim OCR via Sonnet vision) | Image | ✅ implemented (`DescribeImageCommand` `DescribeMode.Transcribe`) |
 | Reformat in situ — LLM (Sonnet via CLI, spec entered after selecting) | Actions | ✅ implemented (`ReformatLlmCommand`) |
 | Reformat in situ — Python script (Sonnet writes + saves a reusable script, then runs it) | Actions | ✅ implemented (`ReformatPythonScriptCommand`) |
 | Act with… — opens interactive Claude Code in a Tabby terminal (normal permissions, no stakes dialog) | Actions | ✅ implemented (`ActWithCommand`) |
 | Send to peers — runs the clipboard content on the fleet (`fleet.ps1 run`, optional `-Only`) | Actions | ✅ implemented (`SendToPeersCommand`) |
-| Search online — clipboard text (or a reverse-image search) in the default browser (Google / Perplexity) | Actions | ✅ implemented (`SearchOnlineCommand`; images upload via `Services/ImageHost.cs`) |
-| Log to Obsidian daily journal | Actions | ⬜ stub |
-| Clipboard Hawk — suppress popup, record copies (text/image) to a stack with a hit sound; top-left overlay + tray count; Esc or tray flushes | Actions | ✅ implemented (`HawkCommand`, `Services/Hawk.cs`) |
-| Clipboard Cycle — split into fragments; each Ctrl+V pastes the next; top-left overlay; Esc / next-copy ends it | Actions | ✅ implemented (`ClipboardCycleCommand`, `Services/ClipboardCycle.cs`) |
-| Auto-format and print | Actions | ⬜ stub (printer not yet available) |
+| Log to Obsidian daily journal | Collect | ⬜ stub |
+| Clipboard Hawk — suppress popup, record copies (text/image) to a stack with a hit sound; top-left overlay + tray count; Esc or tray flushes | Collect | ✅ implemented (`HawkCommand`, `Services/Hawk.cs`) |
+| Clipboard Cycle — split into fragments; each Ctrl+V pastes the next; top-left overlay; Esc / next-copy ends it | Collect | ✅ implemented (`ClipboardCycleCommand`, `Services/ClipboardCycle.cs`) |
+| Auto-format and print | Collect | ⬜ stub (printer not yet available) |
 
 ### AI commands (via the `claude` CLI)
 - All AI features route through `Services/ClaudeCli.cs` (the CLI, **not** the HTTP API) so they reuse

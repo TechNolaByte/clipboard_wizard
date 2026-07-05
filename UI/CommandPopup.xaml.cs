@@ -61,9 +61,15 @@ public partial class CommandPopup : Window
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
-        // Don't self-close while a modal (e.g. the delete confirmation) is up.
-        if (!_ignoreDeactivate)
-            Dismiss();
+        // Sticky focus: rather than closing when focus leaves, grab it straight back so the next
+        // click or keystroke still lands on the popup. Only Escape or running a command closes it.
+        // Skipped while a modal child (delete confirm) is up, while a command runs, or during close.
+        if (_ignoreDeactivate || _dismissing || _executing)
+            return;
+
+        // We just lost the foreground, so Windows still lets us reclaim it here.
+        Activate();
+        FilterBox.Focus();
     }
 
     /// <summary>Close the popup at most once (Escape, focus loss, and post-run all route here).</summary>
@@ -158,7 +164,7 @@ public partial class CommandPopup : Window
             return;
         }
 
-        // Nothing on the clipboard (e.g. opened via the Ctrl+Win+C hotkey with an empty clipboard).
+        // Nothing on the clipboard (defensive — the trigger gate won't open an empty popup).
         PreviewText.Text = "<no clipboard>";
         ShowPreview(image: false);
     }

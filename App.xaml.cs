@@ -9,8 +9,12 @@ namespace ClipboardWizard;
 
 public partial class App : Application
 {
+    // A re-copy that lands within this window of the previous change is treated as one app writing
+    // the clipboard twice for a single Ctrl+C (some apps do), not a human re-copying — so it stays
+    // quiet. A deliberate re-copy is always slower than this.
+    private const long RecopyMinGapMs = 250;
+
     private ClipboardMonitor? _monitor;
-    private HotkeyService? _hotkeys;
     private CommandRegistry? _registry;
     private CommandPopup? _popup;
     private Forms.NotifyIcon? _tray;
@@ -18,6 +22,8 @@ public partial class App : Application
     private Forms.ToolStripMenuItem? _hawkCancel;
     private Forms.ToolStripMenuItem? _cycleStop;
     private bool _hawkWasActive;
+    private string? _lastContentSignature;
+    private long _lastChangeTick;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -53,49 +59,53 @@ public partial class App : Application
 
         Hawk.Changed = OnModeChanged;
         ClipboardCycle.Changed = OnModeChanged;
-
-        // Global hotkey (Ctrl+Win+C) to summon the popup on demand for the current clipboard.
-        _hotkeys = new HotkeyService();
-        _hotkeys.Activated += (_, _) => Dispatcher.BeginInvoke(new Action(() => ShowPopup(force: true)));
-        _hotkeys.Start();
-        if (!_hotkeys.Registered)
-            _tray?.ShowBalloonTip(4000, "Clipboard Wizard",
-                "Couldn't register Ctrl+Win+C — another app already uses it. The tray and the " +
-                "copy-triggered popup still work.", Forms.ToolTipIcon.Warning);
     }
 
     private void OnClipboardChanged(object? sender, EventArgs e)
     {
         // The notification arrives on the UI thread already, but BeginInvoke yields so the
         // clipboard owner has finished writing before we read it.
-        Dispatcher.BeginInvoke(new Action(() => ShowPopup()));
+        Dispatcher.BeginInvoke(new Action(HandleClipboardChange));
     }
 
     /// <summary>
-    /// Show the command popup for the current clipboard. <paramref name="force"/> (the hotkey path)
-    /// opens it even when the clipboard is empty or a mode is active; the change-driven path doesn't.
+    /// Decide whether a clipboard change should summon the popup. A single (fresh) copy is quiet;
+    /// re-copying the same content summons the wizard. Identical bytes still bump the OS sequence
+    /// number, so a re-copy reaches us as a second change event with a matching content signature.
     /// </summary>
-    private void ShowPopup(bool force = false)
+    private void HandleClipboardChange()
     {
         var payload = ClipboardPayload.Capture();
 
-        if (!force)
+        // Clipboard Hawk swallows the change: record it, no popup.
+        if (Hawk.Active)
         {
-            // Clipboard Hawk swallows the change: record it, no popup.
-            if (Hawk.Active)
-            {
-                Hawk.Capture(payload);
-                return;
-            }
-
-            // A genuine copy during a cycle ends it (our own fragment writes are suppressed, so
-            // they never reach here).
-            if (ClipboardCycle.Active)
-                ClipboardCycle.Stop();
+            Hawk.Capture(payload);
+            return;
         }
 
+        // A genuine copy during a cycle ends it (our own fragment writes are suppressed, so
+        // they never reach here).
+        if (ClipboardCycle.Active)
+            ClipboardCycle.Stop();
+
+        var signature = payload.ContentSignature;
+        var now = Environment.TickCount64;
+        var isRecopy = signature == _lastContentSignature
+            && signature != ClipboardPayload.EmptySignature
+            && now - _lastChangeTick >= RecopyMinGapMs;
+        _lastContentSignature = signature;
+        _lastChangeTick = now;
+
+        if (isRecopy)
+            ShowPopup(payload);
+    }
+
+    /// <summary>Show the command popup for the given clipboard payload (no-op if nothing applies).</summary>
+    private void ShowPopup(ClipboardPayload payload)
+    {
         var commands = _registry!.GetCommands(payload);
-        if (!force && commands.Count == 0)
+        if (commands.Count == 0)
             return;
 
         if (_popup is not null)
@@ -227,7 +237,6 @@ public partial class App : Application
         Hawk.Cancel();
         ClipboardCycle.Stop();
         ModeOverlay.Hide();
-        _hotkeys?.Dispose();
         _monitor?.Dispose();
         if (_tray is not null)
         {

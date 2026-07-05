@@ -1,14 +1,16 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using ClipboardWizard.Models;
 using ClipboardWizard.Services;
+using ClipboardWizard.UI;
 
 namespace ClipboardWizard.Commands;
 
 public enum SearchEngine
 {
-    /// <summary>Plain Google web search.</summary>
+    /// <summary>Plain Google web search (Google Lens for images).</summary>
     Google,
 
     /// <summary>Perplexity AI answer engine.</summary>
@@ -16,8 +18,13 @@ public enum SearchEngine
 }
 
 /// <summary>
-/// Opens the clipboard text as a query in the default browser — Google or Perplexity. The clipboard
-/// is left untouched; this just launches a browser tab, so it's read-only (no suppression needed).
+/// Opens the clipboard content as a query in the default browser — Google or Perplexity.
+///
+/// Text is searched directly. An image is reverse-image-searched: since Google Lens / Perplexity need
+/// the image at a URL but the clipboard image is local, it's uploaded to a temporary public host
+/// (<see cref="ImageHost"/>) — gated behind a confirm because that puts the image on a public URL.
+///
+/// The clipboard is left untouched throughout; this just launches a browser tab (no suppression needed).
 /// </summary>
 public sealed class SearchOnlineCommand : IClipboardCommand
 {
@@ -31,27 +38,88 @@ public sealed class SearchOnlineCommand : IClipboardCommand
 
     public CommandCategory Category => CommandCategory.Action;
 
-    // Search the copied text. Files (no text) aren't meaningful web queries, so gate on text only.
-    public bool CanExecute(ClipboardPayload payload) => payload.HasText;
+    // Text searches directly; an image reverse-searches (uploaded first). Bare files aren't queries.
+    public bool CanExecute(ClipboardPayload payload) =>
+        payload.HasText || HasImage(payload);
 
-    public Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
+    private static bool HasImage(ClipboardPayload payload) =>
+        payload.HasImage || (payload.Files?.Any(ImageIO.IsImageFile) ?? false);
+
+    public async Task ExecuteAsync(ClipboardPayload payload, CommandContext context)
     {
-        var query = payload.Text?.Trim();
-        if (string.IsNullOrEmpty(query))
-            return Task.CompletedTask;
+        // Text wins when both are present — it's the more precise query.
+        if (payload.HasText)
+        {
+            var query = payload.Text!.Trim();
+            if (query.Length == 0)
+                return;
+            var encoded = Uri.EscapeDataString(query);
+            var url = _engine == SearchEngine.Google
+                ? "https://www.google.com/search?q=" + encoded
+                : "https://www.perplexity.ai/search/new?q=" + encoded;
+            OpenSearch(url, $"Open {_engine} search for the clipboard text", query);
+            return;
+        }
 
-        var encoded = Uri.EscapeDataString(query);
+        if (HasImage(payload))
+            await SearchImageAsync(payload);
+    }
+
+    private async Task SearchImageAsync(ClipboardPayload payload)
+    {
+        if (!Prompts.Confirm("Reverse-image search",
+                $"To search this image on {_engine}, Clipboard Wizard will upload it to a temporary " +
+                "public host (tmpfiles.org) to get a link, then open the results.\n\n" +
+                "The image will be reachable at a public URL for about 1 hour, then auto-deleted. Continue?"))
+            return;
+
+        string imagePath;
+        try
+        {
+            imagePath = ImageIO.Materialize(payload, AppPaths.ScratchpadDir);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"No image to search:\n{ex.Message}", "Clipboard Wizard",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        string imageUrl;
+        StatusToast.Show($"{Name} · uploading image…");
+        try
+        {
+            imageUrl = await ImageHost.UploadAsync(imagePath);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Couldn't upload the image:\n{ex.Message}", "Clipboard Wizard",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        finally
+        {
+            StatusToast.Hide();
+        }
+
+        var encoded = Uri.EscapeDataString(imageUrl);
         var url = _engine == SearchEngine.Google
-            ? "https://www.google.com/search?q=" + encoded
-            : "https://www.perplexity.ai/search/new?q=" + encoded;
+            // Lens takes the image URL directly and shows visual matches.
+            ? "https://lens.google.com/uploadbyurl?url=" + encoded
+            // Perplexity has no image-URL entry point, so ask it to look at the hosted image.
+            : "https://www.perplexity.ai/search/new?q=" +
+              Uri.EscapeDataString("Identify and describe this image: " + imageUrl);
 
+        OpenSearch(url, $"Reverse-image search on {_engine} (image hosted at {imageUrl})", imageUrl);
+    }
+
+    private void OpenSearch(string url, string logInstruction, string original)
+    {
         try
         {
             // UseShellExecute launches the user's default browser for the URL.
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-
-            ActionLog.Write(Name, $"Open {_engine} search for the clipboard text",
-                query, null, $"Opened {url}",
+            ActionLog.Write(Name, logInstruction, original, null, $"Opened {url}",
                 "(clipboard unchanged)", null);
         }
         catch (Exception ex)
@@ -59,7 +127,5 @@ public sealed class SearchOnlineCommand : IClipboardCommand
             MessageBox.Show($"Could not open a browser:\n{ex.Message}", "Clipboard Wizard",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
-
-        return Task.CompletedTask;
     }
 }

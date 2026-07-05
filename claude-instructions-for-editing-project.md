@@ -105,7 +105,7 @@ Categories: **Scripts** (in-situ Python), **Image** (only when clipboard holds a
 | Reformat in situ — Python script (Sonnet writes + saves a reusable script, then runs it) | Actions | ✅ implemented (`ReformatPythonScriptCommand`) |
 | Act with… — opens interactive Claude Code in a Tabby terminal (normal permissions, no stakes dialog) | Actions | ✅ implemented (`ActWithCommand`) |
 | Send to peers — runs the clipboard content on the fleet (`fleet.ps1 run`, optional `-Only`) | Actions | ✅ implemented (`SendToPeersCommand`) |
-| Search online — opens the clipboard text as a query in the default browser (Google / Perplexity) | Actions | ✅ implemented (`SearchOnlineCommand`) |
+| Search online — clipboard text (or a reverse-image search) in the default browser (Google / Perplexity) | Actions | ✅ implemented (`SearchOnlineCommand`; images upload via `Services/ImageHost.cs`) |
 | Log to Obsidian daily journal | Actions | ⬜ stub |
 | Clipboard Hawk — suppress popup, record copies (text/image) to a stack with a hit sound; top-left overlay + tray count; Esc or tray flushes | Actions | ✅ implemented (`HawkCommand`, `Services/Hawk.cs`) |
 | Clipboard Cycle — split into fragments; each Ctrl+V pastes the next; top-left overlay; Esc / next-copy ends it | Actions | ✅ implemented (`ClipboardCycleCommand`, `Services/ClipboardCycle.cs`) |

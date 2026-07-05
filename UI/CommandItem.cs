@@ -21,15 +21,20 @@ public sealed class CommandItem
 
     public string Group => Command.Category switch
     {
+        CommandCategory.Research => "Research",
         CommandCategory.PythonScript => "Scripts",
         CommandCategory.Image => "Image",
+        CommandCategory.Collect => "Collect",
         _ => "Actions",
     };
 
     public int GroupOrder => Command.Category switch
     {
-        CommandCategory.PythonScript => 0,
-        CommandCategory.Image => 1,
-        _ => 2,
+        CommandCategory.Research => 0,
+        CommandCategory.PythonScript => 1,
+        CommandCategory.Image => 2,
+        CommandCategory.Action => 3,
+        CommandCategory.Collect => 4,
+        _ => 3,
     };
 }

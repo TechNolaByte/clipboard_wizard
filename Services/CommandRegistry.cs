@@ -7,10 +7,11 @@ using ClipboardWizard.Models;
 namespace ClipboardWizard.Services;
 
 /// <summary>
-/// Produces the list of commands shown in the popup: the user's Python scripts (newest first),
-/// then image operations (when the clipboard holds an image), then the built-in actions.
-/// This is the single place to register new commands. Each command self-gates via
-/// <see cref="IClipboardCommand.CanExecute"/>, so ordering here is purely about display grouping.
+/// Produces the list of commands shown in the popup: Research (Ask Claude / Search online), the user's
+/// Python scripts (newest first), image operations (when the clipboard holds an image), the built-in
+/// actions, and the Collect modes. This is the single place to register new commands. Each command
+/// self-gates via <see cref="IClipboardCommand.CanExecute"/>, and the popup groups by category, so the
+/// order of items within a category is the only thing registration order controls.
 /// </summary>
 public sealed class CommandRegistry
 {
@@ -28,9 +29,11 @@ public sealed class CommandRegistry
     public IReadOnlyList<IClipboardCommand> GetCommands(ClipboardPayload payload)
     {
         var commands = new List<IClipboardCommand>();
+        commands.AddRange(GetResearch());
         commands.AddRange(GetPythonScripts());
         commands.AddRange(GetImageCommands());
         commands.AddRange(GetActions());
+        commands.AddRange(GetCollect());
         return commands.Where(c => c.CanExecute(payload)).ToList();
     }
 
@@ -50,12 +53,22 @@ public sealed class CommandRegistry
     // Transform uses ImageMagick if present else ffmpeg; Describe uses Sonnet vision via the CLI.
     private static IEnumerable<IClipboardCommand> GetImageCommands()
     {
+        yield return new DescribeImageCommand(DescribeMode.Transcribe);
         yield return new SplitGifCommand();
         yield return new JoinPngsToGifCommand();
         yield return new JpgToPngCommand();
         yield return new TransformImageCommand();
         yield return new DescribeImageCommand(DescribeMode.Title);
         yield return new DescribeImageCommand(DescribeMode.Verbose);
+    }
+
+    // Research group: ask an AI about the clipboard. "Ask Claude" is first so it's the popup's
+    // default selection (Research sorts before every other group), then the browser searches.
+    private static IEnumerable<IClipboardCommand> GetResearch()
+    {
+        yield return new AskClaudeCommand();
+        yield return new SearchOnlineCommand(SearchEngine.Google);
+        yield return new SearchOnlineCommand(SearchEngine.Perplexity);
     }
 
     private IEnumerable<IClipboardCommand> GetActions()
@@ -66,14 +79,15 @@ public sealed class CommandRegistry
         yield return new ReformatPythonScriptCommand(_scriptsDir);
         yield return new ActWithCommand();
         yield return new SendToPeersCommand();
-        yield return new SearchOnlineCommand(SearchEngine.Google);
-        yield return new SearchOnlineCommand(SearchEngine.Perplexity);
+    }
 
-        // On the roadmap — visible stubs so the menu reflects the full plan:
-        yield return new NotImplementedCommand("Log to Obsidian daily journal");
+    // Collect group: capture/collection modes.
+    private static IEnumerable<IClipboardCommand> GetCollect()
+    {
+        yield return new NotImplementedCommand("Log to Obsidian daily journal", CommandCategory.Collect);
         yield return new HawkCommand();
         yield return new ClipboardCycleCommand();
-        yield return new NotImplementedCommand("Auto-format and print");
+        yield return new NotImplementedCommand("Auto-format and print", CommandCategory.Collect);
     }
 
     private void EnsureScriptsFolder()

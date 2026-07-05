@@ -14,6 +14,9 @@ public enum DescribeMode
 
     /// <summary>A ~3-sentence description.</summary>
     Verbose,
+
+    /// <summary>The exact text contained in the image, transcribed verbatim (OCR).</summary>
+    Transcribe,
 }
 
 /// <summary>
@@ -27,9 +30,12 @@ public sealed class DescribeImageCommand : IClipboardCommand
 
     public DescribeImageCommand(DescribeMode mode) => _mode = mode;
 
-    public string Name => _mode == DescribeMode.Title
-        ? "Describe image — title"
-        : "Describe image — verbose";
+    public string Name => _mode switch
+    {
+        DescribeMode.Title => "Describe image — title",
+        DescribeMode.Verbose => "Describe image — verbose",
+        _ => "Transcribe — exact text in image",
+    };
 
     public CommandCategory Category => CommandCategory.Image;
 
@@ -50,11 +56,19 @@ public sealed class DescribeImageCommand : IClipboardCommand
             return;
         }
 
-        var instruction = _mode == DescribeMode.Title
-            ? $"View the image file at {imagePath} and give it a concise title of about 5 words. " +
-              "Output only the title, nothing else."
-            : $"View the image file at {imagePath} and describe it in about 3 sentences. " +
-              "Output only the description, nothing else.";
+        var instruction = _mode switch
+        {
+            DescribeMode.Title =>
+                $"View the image file at {imagePath} and give it a concise title of about 5 words. " +
+                "Output only the title, nothing else.",
+            DescribeMode.Verbose =>
+                $"View the image file at {imagePath} and describe it in about 3 sentences. " +
+                "Output only the description, nothing else.",
+            _ =>
+                $"View the image file at {imagePath} and transcribe the exact text it contains, " +
+                "verbatim, preserving line breaks and reading order. Output only the transcribed text " +
+                "and nothing else. If the image contains no text, output nothing.",
+        };
 
         if (AppState.Verbose)
         {

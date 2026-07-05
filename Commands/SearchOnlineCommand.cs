@@ -36,7 +36,7 @@ public sealed class SearchOnlineCommand : IClipboardCommand
         ? "Search online — Google"
         : "Search online — Perplexity";
 
-    public CommandCategory Category => CommandCategory.Action;
+    public CommandCategory Category => CommandCategory.Research;
 
     // Text searches directly; an image reverse-searches (uploaded first). Bare files aren't queries.
     public bool CanExecute(ClipboardPayload payload) =>

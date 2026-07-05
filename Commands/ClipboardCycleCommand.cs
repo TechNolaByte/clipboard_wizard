@@ -12,7 +12,7 @@ public sealed class ClipboardCycleCommand : IClipboardCommand
 {
     public string Name => "Clipboard Cycle (fragment + paste)";
 
-    public CommandCategory Category => CommandCategory.Action;
+    public CommandCategory Category => CommandCategory.Collect;
 
     public bool CanExecute(ClipboardPayload payload) => payload.HasInput;
 

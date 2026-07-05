@@ -5,14 +5,20 @@ namespace ClipboardWizard.Models;
 
 public enum CommandCategory
 {
+    /// <summary>Ask-an-AI-about-the-clipboard actions (Ask Claude, Search online). Shown first.</summary>
+    Research,
+
     /// <summary>User-supplied Python scripts that transform the clipboard in place.</summary>
     PythonScript,
 
     /// <summary>Operations offered only when the clipboard holds an image or image files.</summary>
     Image,
 
-    /// <summary>Built-in verbs (run as PowerShell, log to Obsidian, etc.).</summary>
+    /// <summary>Built-in verbs (run as PowerShell, reformat, etc.).</summary>
     Action,
+
+    /// <summary>Capture/collection modes (Obsidian journal, Hawk, Cycle, print).</summary>
+    Collect,
 }
 
 /// <summary>

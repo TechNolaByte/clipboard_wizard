@@ -13,7 +13,7 @@ public sealed class HawkCommand : IClipboardCommand
 {
     public string Name => "Clipboard Hawk (record stack)";
 
-    public CommandCategory Category => CommandCategory.Action;
+    public CommandCategory Category => CommandCategory.Collect;
 
     public bool CanExecute(ClipboardPayload payload) => true;
 

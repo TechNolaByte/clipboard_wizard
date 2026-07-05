@@ -2,21 +2,22 @@ using System.Threading.Tasks;
 using System.Windows;
 using ClipboardWizard.Models;
 using ClipboardWizard.Services;
-using ClipboardWizard.UI;
 
 namespace ClipboardWizard.Commands;
 
 /// <summary>
-/// "Act with…": open an interactive Claude Code session in a Tabby terminal, seeded with the
-/// clipboard content plus the user's instruction. It runs with normal permissions (auto mode — it
-/// asks before risky actions). The prompt is passed via a wrapper script (read from a file), so no
-/// multi-line/quoted content goes through Tabby's argument parser.
+/// "Ask Claude": like <see cref="ActWithCommand"/> but with no instruction dialog — it opens an
+/// interactive Claude Code session in a terminal immediately, seeded with a fixed "tell me about this
+/// clipboard context" prompt plus the clipboard content. This is the popup's default action (top of
+/// the Research group), so pressing Enter with no other input runs it.
 /// </summary>
-public sealed class ActWithCommand : IClipboardCommand
+public sealed class AskClaudeCommand : IClipboardCommand
 {
-    public string Name => "Act with… (Claude Code)";
+    private const string Instruction = "Tell me about this clipboard context:";
 
-    public CommandCategory Category => CommandCategory.Action;
+    public string Name => "Ask Claude";
+
+    public CommandCategory Category => CommandCategory.Research;
 
     public bool CanExecute(ClipboardPayload payload) => payload.HasInput || payload.HasImage;
 
@@ -34,17 +35,9 @@ public sealed class ActWithCommand : IClipboardCommand
             return Task.CompletedTask;
         }
 
-        var instruction = Prompts.AskText("Act with… (Claude Code)",
-            "What should Claude do with this clipboard content?\n\n" +
-            "It opens in a terminal and runs with normal permissions — it will ask before risky actions.",
-            multiline: true,
-            context: content);
-        if (string.IsNullOrWhiteSpace(instruction))
-            return Task.CompletedTask;
-
         try
         {
-            ClaudeSession.Launch("actwith", instruction, content);
+            ClaudeSession.Launch("askclaude", Instruction, content);
         }
         catch (Exception ex)
         {
@@ -53,7 +46,7 @@ public sealed class ActWithCommand : IClipboardCommand
             return Task.CompletedTask;
         }
 
-        ActionLog.Write("Act with", instruction, content, null,
+        ActionLog.Write("Ask Claude", Instruction, content, null,
             "Opened an interactive Claude Code session in a terminal (normal permissions).",
             "(interactive — see the terminal)", null);
 

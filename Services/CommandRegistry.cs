@@ -66,6 +66,8 @@ public sealed class CommandRegistry
         yield return new ReformatPythonScriptCommand(_scriptsDir);
         yield return new ActWithCommand();
         yield return new SendToPeersCommand();
+        yield return new SearchOnlineCommand(SearchEngine.Google);
+        yield return new SearchOnlineCommand(SearchEngine.Perplexity);
 
         // On the roadmap — visible stubs so the menu reflects the full plan:
         yield return new NotImplementedCommand("Log to Obsidian daily journal");

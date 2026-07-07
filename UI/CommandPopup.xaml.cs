@@ -9,6 +9,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ClipboardWizard.Interop;
 using ClipboardWizard.Models;
 using ClipboardWizard.Services;
@@ -25,9 +26,13 @@ public partial class CommandPopup : Window
     private readonly CommandContext _context;
     private readonly ObservableCollection<CommandItem> _items;
     private readonly ICollectionView _view;
+    // Sticky-focus watchdog: while the popup is open it keeps yanking the foreground back so the next
+    // input lands here no matter where you click. Runs only while the popup is up (stopped on close).
+    private readonly DispatcherTimer _focusGuard;
     private bool _dismissing;
     private bool _executing;
     private bool _ignoreDeactivate;
+    private bool _globalHooked;
 
     public CommandPopup(ClipboardPayload payload, IReadOnlyList<IClipboardCommand> commands, CommandContext context)
     {
@@ -50,25 +55,100 @@ public partial class CommandPopup : Window
         BuildPreview(payload);
         SelectFirst();
 
-        Loaded += (_, _) => FilterBox.Focus();
+        _focusGuard = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(80) };
+        _focusGuard.Tick += (_, _) => GuardFocus();
+
+        Loaded += (_, _) =>
+        {
+            ForceForeground();
+            _focusGuard.Start();
+            // Also catch Escape even when focus somehow ended up elsewhere — a belt-and-braces exit
+            // given how hard the popup holds focus. Refcounted + released on close; the flag keeps a
+            // repeat Loaded from double-acquiring and leaking an always-on hook.
+            if (!_globalHooked)
+            {
+                _globalHooked = true;
+                GlobalKeys.Acquire();
+                GlobalKeys.Key += OnGlobalKey;
+            }
+        };
         ContentRendered += OnContentRendered;
         // Set the guard the instant any close begins (Escape, focus loss, or an external
         // Close() from App), so the Deactivated that a close raises can't re-enter Close().
-        Closing += (_, _) => _dismissing = true;
-        Deactivated += OnDeactivated; // dismiss when focus leaves the popup
+        Closing += (_, _) =>
+        {
+            _dismissing = true;
+            _focusGuard.Stop();
+            if (_globalHooked)
+            {
+                _globalHooked = false;
+                GlobalKeys.Key -= OnGlobalKey;
+                GlobalKeys.Release();
+            }
+        };
+        Deactivated += OnDeactivated;
         PreviewKeyDown += OnPreviewKeyDown;
+    }
+
+    /// <summary>Global (out-of-focus) Escape → dismiss. Runs on the UI thread via the dispatcher.</summary>
+    private void OnGlobalKey(int msg, int vk, bool ctrl)
+    {
+        if (msg == GlobalKeys.WM_KEYDOWN && vk == GlobalKeys.VK_ESCAPE)
+            Dispatcher.BeginInvoke(new Action(Dismiss));
     }
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
-        // Sticky focus: rather than closing when focus leaves, grab it straight back so the next
+        // Sticky focus: rather than closing when focus leaves, immediately rip it back so the next
         // click or keystroke still lands on the popup. Only Escape or running a command closes it.
-        // Skipped while a modal child (delete confirm) is up, while a command runs, or during close.
-        if (_ignoreDeactivate || _dismissing || _executing)
+        GuardFocus();
+    }
+
+    /// <summary>Reclaim the foreground unless a modal child is up, a command is running, or we're closing.</summary>
+    private void GuardFocus()
+    {
+        if (_ignoreDeactivate || _dismissing || _executing || !IsVisible)
             return;
 
-        // We just lost the foreground, so Windows still lets us reclaim it here.
-        Activate();
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero && NativeMethods.GetForegroundWindow() != hwnd)
+            ForceForeground();
+    }
+
+    /// <summary>
+    /// Aggressively take the foreground. Plain <c>Activate()</c> loses to Windows' foreground lock
+    /// when another (e.g. freshly launched) app holds it, so we re-assert topmost and attach to the
+    /// current foreground thread's input queue — the standard trick to bypass the lock — before
+    /// grabbing focus.
+    /// </summary>
+    private void ForceForeground()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+            return;
+
+        var foreground = NativeMethods.GetForegroundWindow();
+        if (foreground == hwnd)
+            return;
+
+        NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+
+        var foreThread = NativeMethods.GetWindowThreadProcessId(foreground, out _);
+        var thisThread = NativeMethods.GetCurrentThreadId();
+        var attached = foreThread != thisThread
+            && NativeMethods.AttachThreadInput(foreThread, thisThread, true);
+        try
+        {
+            NativeMethods.BringWindowToTop(hwnd);
+            NativeMethods.SetForegroundWindow(hwnd);
+            Activate();
+        }
+        finally
+        {
+            if (attached)
+                NativeMethods.AttachThreadInput(foreThread, thisThread, false);
+        }
         FilterBox.Focus();
     }
 

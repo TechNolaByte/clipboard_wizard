@@ -69,9 +69,10 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Decide whether a clipboard change should summon the popup. A single (fresh) copy is quiet;
-    /// re-copying the same content summons the wizard. Identical bytes still bump the OS sequence
-    /// number, so a re-copy reaches us as a second change event with a matching content signature.
+    /// Decide whether a clipboard change should summon the popup. An image pops up instantly (on the
+    /// first copy); text/files stay quiet on a fresh copy and summon only on a deliberate re-copy of
+    /// the same content. Identical bytes still bump the OS sequence number, so a re-copy reaches us as
+    /// a second change event with a matching content signature.
     /// </summary>
     private void HandleClipboardChange()
     {
@@ -91,15 +92,28 @@ public partial class App : Application
 
         var signature = payload.ContentSignature;
         var now = Environment.TickCount64;
-        var isRecopy = signature == _lastContentSignature
-            && signature != ClipboardPayload.EmptySignature
-            && now - _lastChangeTick >= RecopyMinGapMs;
+        var sameAsLast = signature == _lastContentSignature && signature != ClipboardPayload.EmptySignature;
+        var sinceLast = now - _lastChangeTick;
         _lastContentSignature = signature;
         _lastChangeTick = now;
 
-        if (isRecopy)
+        // Images are worth surfacing right away — pop on the first copy. (Skip an app's rapid
+        // duplicate write of the same image so it doesn't re-open on a burst.)
+        if (HasImageContent(payload))
+        {
+            if (!(sameAsLast && sinceLast < RecopyMinGapMs))
+                ShowPopup(payload);
+            return;
+        }
+
+        // Text/files: quiet on a fresh copy, summon on a deliberate re-copy of the same content.
+        if (sameAsLast && sinceLast >= RecopyMinGapMs)
             ShowPopup(payload);
     }
+
+    /// <summary>True when the clipboard holds an image bitmap or image file(s).</summary>
+    private static bool HasImageContent(ClipboardPayload payload) =>
+        payload.HasImage || (payload.Files?.Any(ImageIO.IsImageFile) ?? false);
 
     /// <summary>Show the command popup for the given clipboard payload (no-op if nothing applies).</summary>
     private void ShowPopup(ClipboardPayload payload)

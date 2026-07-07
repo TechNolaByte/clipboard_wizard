@@ -1,8 +1,9 @@
 # Clipboard Wizard
 
-A Windows-only (WPF, .NET) clipboard power-tool. A single (fresh) copy is silent; **re-copying the
-same content** (a deliberate second Ctrl+C on the same thing) summons a small command menu at the mouse
-cursor listing every action available for the current clipboard content.
+A Windows-only (WPF, .NET) clipboard power-tool. Copying an **image** summons the menu instantly; for
+text/files a single (fresh) copy is silent and **re-copying the same content** (a deliberate second
+Ctrl+C on the same thing) summons a small command menu at the mouse cursor listing every action
+available for the current clipboard content.
 
 ## Build & run
 
@@ -30,9 +31,9 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
 ## Architecture
 
 - `App.xaml.cs` — composition root. Starts `ClipboardMonitor`, owns the tray icon. `HandleClipboardChange`
-  is the trigger gate: a fresh copy is quiet, and the popup is shown only when the same content is copied
-  again (matching `ClipboardPayload.ContentSignature`, and slower than `RecopyMinGapMs` so an app that
-  writes the clipboard twice for one copy doesn't false-trigger).
+  is the trigger gate: an image pops instantly; text/files stay quiet on a fresh copy and show the popup
+  only when the same content is copied again (matching `ClipboardPayload.ContentSignature`, and slower
+  than `RecopyMinGapMs` so an app that writes the clipboard twice for one copy doesn't false-trigger).
 - `Services/ClipboardMonitor.cs` — message-only window + `AddClipboardFormatListener`. Raises
   `ClipboardChanged` on every real change (identical re-copies included — they bump the OS sequence
   number). `SuppressNext()` masks our own writes so self-edits (Cycle/Hawk) don't loop.
@@ -47,9 +48,12 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
 - `UI/CommandPopup.xaml(.cs)` — borderless topmost menu. Placed at the cursor in pixel space via
   `SetWindowPos` + per-monitor DPI (robust across multi-monitor); filter box; a **preview panel**
   (monospace text for text/files, a thumbnail for images); keyboard nav (↑/↓ select, Enter run,
-  Esc close); single-click an item to run it. **Sticky focus:** clicking away doesn't close it — it
-  grabs focus back (re-`Activate` on `Deactivated`) so the next input still lands on it; only Esc or
-  running a command closes it.
+  Esc close); single-click an item to run it. **Aggressive sticky focus:** clicking away doesn't close
+  it — an 80 ms `DispatcherTimer` watchdog (plus the `Deactivated` handler) rips the foreground back via
+  `ForceForeground()`, which re-asserts topmost and uses the `AttachThreadInput` trick to beat Windows'
+  foreground lock (plain `Activate()` loses to a freshly launched app). Only Esc or running a command
+  closes it. The guard is skipped while a modal child (delete confirm) is up, a command is running, or
+  the window is hidden/closing.
 - `Services/ClaudeCli.cs` — wraps the `claude` CLI for all AI features (text transform, vision
   describe, agentic "Act with"). Uses sped-up flags (`-p --no-session-persistence --strict-mcp-config`)
   that don't break OAuth — deliberately **not** `--bare` (which forces API-key auth). Runs in the

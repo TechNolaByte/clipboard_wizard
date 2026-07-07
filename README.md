@@ -1,8 +1,9 @@
 # Clipboard Wizard
 
-A Windows clipboard power-tool. A single copy is silent — **copy the same thing twice** (a second
-Ctrl+C on the same selection) and a small command menu pops up at your mouse cursor (clamped to the
-screen) listing every action available for what you copied.
+A Windows clipboard power-tool. Copying an **image** pops the menu instantly; for text/files a single
+copy is silent — **copy the same thing twice** (a second Ctrl+C on the same selection) and a small
+command menu pops up at your mouse cursor (clamped to the screen) listing every action available for
+what you copied.
 
 ![The command popup with a text payload](assets/screenshot-text.png)
 

@@ -22,24 +22,46 @@ namespace ClipboardWizard.UI;
 /// </summary>
 public partial class CommandPopup : Window
 {
-    private readonly ClipboardPayload _payload;
+    /// <summary>
+    /// Passive popups ignore global input for this long after opening, so a trailing keystroke or
+    /// click from the copy gesture that summoned them can't dismiss them instantly.
+    /// </summary>
+    private const long PassiveArmDelayMs = 250;
+
+    private ClipboardPayload _payload;
     private readonly CommandContext _context;
     private readonly ObservableCollection<CommandItem> _items;
     private readonly ICollectionView _view;
     // Sticky-focus watchdog: while the popup is open it keeps yanking the foreground back so the next
-    // input lands here no matter where you click. Runs only while the popup is up (stopped on close).
+    // input lands here no matter where you click. Runs only while the popup is up (stopped on close),
+    // and never in passive mode.
     private readonly DispatcherTimer _focusGuard;
+    // Passive mode: shown without activation (never steals focus). Instead of holding the foreground
+    // it watches global input and gets out of the way — any keypress, or a click outside it, closes it.
+    private readonly bool _passive;
+    private long _armedAt;
+    private bool _engaged;
+    private System.Drawing.Point _anchor;
     private bool _dismissing;
     private bool _executing;
     private bool _ignoreDeactivate;
-    private bool _globalHooked;
+    private bool _keysHooked;
+    private bool _mouseHooked;
 
-    public CommandPopup(ClipboardPayload payload, IReadOnlyList<IClipboardCommand> commands, CommandContext context)
+    public CommandPopup(ClipboardPayload payload, IReadOnlyList<IClipboardCommand> commands,
+        CommandContext context, bool passive = false)
     {
         InitializeComponent();
 
         _payload = payload;
         _context = context;
+        _passive = passive;
+        if (passive)
+        {
+            // Must be set before Show(): this is what keeps the popup from taking focus as it appears.
+            ShowActivated = false;
+            HintText.Text = "Esc, any key, or a click away to exit";
+        }
 
         _items = new ObservableCollection<CommandItem>(
             commands.Select((c, i) => new CommandItem { Command = c, Index = i }));
@@ -60,16 +82,30 @@ public partial class CommandPopup : Window
 
         Loaded += (_, _) =>
         {
-            ForceForeground();
-            _focusGuard.Start();
-            // Also catch Escape even when focus somehow ended up elsewhere — a belt-and-braces exit
-            // given how hard the popup holds focus. Refcounted + released on close; the flag keeps a
-            // repeat Loaded from double-acquiring and leaking an always-on hook.
-            if (!_globalHooked)
+            _armedAt = Environment.TickCount64 + PassiveArmDelayMs;
+
+            if (!_passive)
             {
-                _globalHooked = true;
+                ForceForeground();
+                _focusGuard.Start();
+            }
+
+            // Global keys: in the sticky-focus mode this is a belt-and-braces Escape for when focus
+            // somehow ended up elsewhere; in passive mode it's the primary dismissal path (the popup
+            // has no focus, so every keystroke arrives here). Mouse presses are only watched in
+            // passive mode. Both hooks are refcounted and released on close; the flags keep a repeat
+            // Loaded from double-acquiring and leaking an always-on hook.
+            if (!_keysHooked)
+            {
+                _keysHooked = true;
                 GlobalKeys.Acquire();
                 GlobalKeys.Key += OnGlobalKey;
+            }
+            if (_passive && !_mouseHooked)
+            {
+                _mouseHooked = true;
+                GlobalMouse.Acquire();
+                GlobalMouse.ButtonDown += OnGlobalMouseDown;
             }
         };
         ContentRendered += OnContentRendered;
@@ -79,29 +115,92 @@ public partial class CommandPopup : Window
         {
             _dismissing = true;
             _focusGuard.Stop();
-            if (_globalHooked)
+            if (_keysHooked)
             {
-                _globalHooked = false;
+                _keysHooked = false;
                 GlobalKeys.Key -= OnGlobalKey;
                 GlobalKeys.Release();
             }
+            if (_mouseHooked)
+            {
+                _mouseHooked = false;
+                GlobalMouse.ButtonDown -= OnGlobalMouseDown;
+                GlobalMouse.Release();
+            }
         };
+        Activated += OnActivated;
         Deactivated += OnDeactivated;
         PreviewKeyDown += OnPreviewKeyDown;
     }
 
-    /// <summary>Global (out-of-focus) Escape → dismiss. Runs on the UI thread via the dispatcher.</summary>
+    /// <summary>True once the arming delay after opening has elapsed.</summary>
+    private bool Armed => Environment.TickCount64 >= _armedAt;
+
+    /// <summary>True while a modal child, a running command, or a close makes global input irrelevant.</summary>
+    private bool Inert => _dismissing || _executing || _ignoreDeactivate || !IsVisible;
+
+    /// <summary>
+    /// Global (out-of-focus) keys. Escape always dismisses. A passive popup also dismisses on any
+    /// other keypress — you were typing somewhere else, so it should get out of the way — until you
+    /// click it, at which point the keyboard is yours (filtering, ↑/↓, Enter).
+    /// </summary>
     private void OnGlobalKey(int msg, int vk, bool ctrl)
     {
-        if (msg == GlobalKeys.WM_KEYDOWN && vk == GlobalKeys.VK_ESCAPE)
+        if (msg != GlobalKeys.WM_KEYDOWN && msg != GlobalKeys.WM_SYSKEYDOWN)
+            return;
+
+        if (vk == GlobalKeys.VK_ESCAPE)
+        {
             Dispatcher.BeginInvoke(new Action(Dismiss));
+            return;
+        }
+
+        if (_passive && !_engaged && Armed && !Inert && !IsModifier(vk))
+            Dispatcher.BeginInvoke(new Action(Dismiss));
+    }
+
+    /// <summary>
+    /// Modifiers don't count as "a keypress": they auto-repeat while held, so the Ctrl of the Ctrl+C
+    /// that summoned the popup would otherwise close it immediately.
+    /// </summary>
+    private static bool IsModifier(int vk) =>
+        vk is 0x10 or 0x11 or 0x12          // Shift / Ctrl / Alt (virtual)
+           or >= 0xA0 and <= 0xA5           // L/R Shift, Ctrl, Alt
+           or 0x5B or 0x5C                  // L/R Win
+           or 0x14 or 0x90 or 0x91;         // CapsLock / NumLock / ScrollLock
+
+    /// <summary>A passive popup closes on any mouse press that didn't land on it.</summary>
+    private void OnGlobalMouseDown(int x, int y)
+    {
+        if (!Armed || Inert)
+            return;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero && NativeMethods.GetWindowRect(hwnd, out var r)
+            && x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom)
+            return; // landed on the popup — that's a click for us, not a dismissal
+
+        Dispatcher.BeginInvoke(new Action(Dismiss));
+    }
+
+    private void OnActivated(object? sender, EventArgs e)
+    {
+        if (!_passive || _engaged)
+            return;
+
+        // The user clicked the popup, so it now legitimately holds focus: stop treating keystrokes as
+        // "typing elsewhere" and put the caret in the filter box so ↑/↓/Enter work.
+        _engaged = true;
+        FilterBox.Focus();
     }
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
         // Sticky focus: rather than closing when focus leaves, immediately rip it back so the next
         // click or keystroke still lands on the popup. Only Escape or running a command closes it.
-        GuardFocus();
+        // Passive popups skip this entirely — they never take focus, so they never fight for it.
+        if (!_passive)
+            GuardFocus();
     }
 
     /// <summary>Reclaim the foreground unless a modal child is up, a command is running, or we're closing.</summary>
@@ -287,29 +386,63 @@ public partial class CommandPopup : Window
     // ---- Placement: position at the cursor in pixel space, clamped to the working area ----
     private void OnContentRendered(object? sender, EventArgs e)
     {
+        NativeMethods.GetCursorPos(out var cursor);
+        _anchor = new System.Drawing.Point(cursor.X, cursor.Y);
+        PlaceAtAnchor();
+    }
+
+    /// <summary>
+    /// Put the window next to the anchor (the cursor as it was when the popup opened) and clamp it to
+    /// that monitor's working area. Re-run after the content changes height so it stays on screen.
+    /// </summary>
+    private void PlaceAtAnchor()
+    {
         var hwnd = new WindowInteropHelper(this).Handle;
-        if (!NativeMethods.GetWindowRect(hwnd, out var rect))
+        if (hwnd == IntPtr.Zero || !NativeMethods.GetWindowRect(hwnd, out var rect))
             return;
 
         var w = rect.Right - rect.Left;
         var h = rect.Bottom - rect.Top;
 
-        NativeMethods.GetCursorPos(out var cursor);
-        var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(cursor.X, cursor.Y));
-        var area = screen.WorkingArea;
+        var area = System.Windows.Forms.Screen.FromPoint(_anchor).WorkingArea;
 
         const int offset = 12;
-        var x = cursor.X + offset;
-        var y = cursor.Y + offset;
+        var x = _anchor.X + offset;
+        var y = _anchor.Y + offset;
 
         // Flip to the other side of the cursor if we'd overflow, then hard-clamp to the screen.
-        if (x + w > area.Right) x = cursor.X - w - offset;
-        if (y + h > area.Bottom) y = cursor.Y - h - offset;
+        if (x + w > area.Right) x = _anchor.X - w - offset;
+        if (y + h > area.Bottom) y = _anchor.Y - h - offset;
         x = Math.Max(area.Left, Math.Min(x, area.Right - w));
         y = Math.Max(area.Top, Math.Min(y, area.Bottom - h));
 
+        // NOACTIVATE matters in passive mode: placement must never pull the foreground over.
         NativeMethods.SetWindowPos(hwnd, NativeMethods.HWND_TOPMOST, x, y, 0, 0,
-            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_SHOWWINDOW);
+            NativeMethods.SWP_NOSIZE | NativeMethods.SWP_SHOWWINDOW | NativeMethods.SWP_NOACTIVATE);
+    }
+
+    /// <summary>
+    /// Swap in a payload that arrived just after the popup opened (the screenshot swap lands a moment
+    /// after the copy) and rebuild the command list for it. Declined — leaving the popup as-is — once
+    /// the user has started filtering or moving the selection, so nothing shifts under them.
+    /// </summary>
+    public bool TryUpdatePayload(ClipboardPayload payload, IReadOnlyList<IClipboardCommand> commands)
+    {
+        if (_dismissing || _executing || commands.Count == 0)
+            return false;
+        if (!string.IsNullOrEmpty(FilterBox.Text) || CommandList.SelectedIndex > 0)
+            return false;
+
+        _payload = payload;
+        _items.Clear();
+        for (var i = 0; i < commands.Count; i++)
+            _items.Add(new CommandItem { Command = commands[i], Index = i });
+
+        BuildPreview(payload);
+        SelectFirst();
+        // Height changes with the new list, so re-clamp once the new layout has been measured.
+        Dispatcher.BeginInvoke(new Action(PlaceAtAnchor), DispatcherPriority.Loaded);
+        return true;
     }
 
     // ---- Keyboard ----

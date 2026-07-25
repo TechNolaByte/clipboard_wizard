@@ -122,8 +122,9 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <!-- Tiny hint: the only way out besides running a command (focus is held aggressively). -->
-            <TextBlock Text="Esc to exit" FontSize="9.5" Foreground="#6B7280"
+            <!-- Tiny hint: how to get out besides running a command. Sticky-focus popups hold focus
+                 aggressively, so Esc is the only way; passive (image) popups rewrite this text. -->
+            <TextBlock x:Name="HintText" Text="Esc to exit" FontSize="9.5" Foreground="#6B7280"
                        HorizontalAlignment="Right" Margin="0,4,2,0" Opacity="0.85" />
         </StackPanel>
     </Border>

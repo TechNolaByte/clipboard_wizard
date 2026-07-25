@@ -102,7 +102,7 @@ public partial class App : Application
         if (HasImageContent(payload))
         {
             if (!(sameAsLast && sinceLast < RecopyMinGapMs))
-                ShowPopup(payload);
+                ShowImagePopup(payload);
             return;
         }
 
@@ -115,12 +115,41 @@ public partial class App : Application
     private static bool HasImageContent(ClipboardPayload payload) =>
         payload.HasImage || (payload.Files?.Any(ImageIO.IsImageFile) ?? false);
 
-    /// <summary>Show the command popup for the given clipboard payload (no-op if nothing applies).</summary>
-    private void ShowPopup(ClipboardPayload payload)
+    /// <summary>
+    /// An image copy shows a <em>passive</em> popup (topmost but never focus-stealing — it closes on any
+    /// keypress or an outside click), and kicks off the screenshot swap: if Windows' screen capture also
+    /// saved this shot to Pictures\Screenshots, the clipboard is upgraded to carry that file so it can
+    /// be pasted as a path. The file usually lands a moment after the clipboard, so the popup opens
+    /// first and picks the file up when it appears.
+    /// </summary>
+    private void ShowImagePopup(ClipboardPayload payload)
+    {
+        var popup = ShowPopup(payload, passive: true);
+        if (ScreenshotSwap.IsCandidate(payload))
+            _ = SwapScreenshotAsync(payload, popup);
+    }
+
+    private async Task SwapScreenshotAsync(ClipboardPayload payload, CommandPopup? popup)
+    {
+        var swapped = await ScreenshotSwap.TrySwapAsync(payload, () => _monitor!.SuppressNext());
+        if (swapped is null)
+            return;
+
+        // The write is suppressed, so the re-copy gate never sees it — deliberately leave
+        // _lastContentSignature on the image, which is what the user actually copied.
+        if (popup is not null && ReferenceEquals(_popup, popup))
+            popup.TryUpdatePayload(swapped, _registry!.GetCommands(swapped));
+    }
+
+    /// <summary>
+    /// Show the command popup for the given clipboard payload (null if nothing applies). Passive
+    /// popups appear without taking focus; the rest hold it stickily.
+    /// </summary>
+    private CommandPopup? ShowPopup(ClipboardPayload payload, bool passive = false)
     {
         var commands = _registry!.GetCommands(payload);
         if (commands.Count == 0)
-            return;
+            return null;
 
         if (_popup is not null)
         {
@@ -135,13 +164,15 @@ public partial class App : Application
             SuppressNextClipboardChange = () => _monitor!.SuppressNext(),
         };
 
-        var popup = new CommandPopup(payload, commands, context);
+        var popup = new CommandPopup(payload, commands, context, passive);
         // Only clear the field if this exact popup is still the current one (avoids a late Closed
         // from a previous popup nulling out the new one).
         popup.Closed += (_, _) => { if (ReferenceEquals(_popup, popup)) _popup = null; };
         _popup = popup;
-        _popup.Show();
-        _popup.Activate();
+        popup.Show();
+        if (!passive)
+            popup.Activate(); // passive popups must never pull the foreground
+        return popup;
     }
 
     private void SetupTray()

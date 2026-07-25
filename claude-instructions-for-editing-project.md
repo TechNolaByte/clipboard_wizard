@@ -1,9 +1,10 @@
 # Clipboard Wizard
 
-A Windows-only (WPF, .NET) clipboard power-tool. Copying an **image** summons the menu instantly; for
-text/files a single (fresh) copy is silent and **re-copying the same content** (a deliberate second
-Ctrl+C on the same thing) summons a small command menu at the mouse cursor listing every action
-available for the current clipboard content.
+A Windows-only (WPF, .NET) clipboard power-tool. Copying an **image** summons the menu instantly (and
+without stealing focus — see the passive mode below); for text/files a single (fresh) copy is silent and
+**re-copying the same content** (a deliberate second Ctrl+C on the same thing) summons a small command
+menu at the mouse cursor listing every action available for the current clipboard content. A **screen
+capture** additionally gets its saved file swapped onto the clipboard so the path can be pasted.
 
 ## Build & run
 
@@ -34,6 +35,8 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
   is the trigger gate: an image pops instantly; text/files stay quiet on a fresh copy and show the popup
   only when the same content is copied again (matching `ClipboardPayload.ContentSignature`, and slower
   than `RecopyMinGapMs` so an app that writes the clipboard twice for one copy doesn't false-trigger).
+  An image copy goes through `ShowImagePopup`: a **passive** popup plus a background `ScreenshotSwap`
+  (which upgrades the popup's payload via `TryUpdatePayload` if it lands while the popup is still up).
 - `Services/ClipboardMonitor.cs` — message-only window + `AddClipboardFormatListener`. Raises
   `ClipboardChanged` on every real change (identical re-copies included — they bump the OS sequence
   number). `SuppressNext()` masks our own writes so self-edits (Cycle/Hawk) don't loop.
@@ -48,12 +51,24 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
 - `UI/CommandPopup.xaml(.cs)` — borderless topmost menu. Placed at the cursor in pixel space via
   `SetWindowPos` + per-monitor DPI (robust across multi-monitor); filter box; a **preview panel**
   (monospace text for text/files, a thumbnail for images); keyboard nav (↑/↓ select, Enter run,
-  Esc close); single-click an item to run it. **Aggressive sticky focus:** clicking away doesn't close
-  it — an 80 ms `DispatcherTimer` watchdog (plus the `Deactivated` handler) rips the foreground back via
-  `ForceForeground()`, which re-asserts topmost and uses the `AttachThreadInput` trick to beat Windows'
-  foreground lock (plain `Activate()` loses to a freshly launched app). Only Esc or running a command
-  closes it. The guard is skipped while a modal child (delete confirm) is up, a command is running, or
-  the window is hidden/closing.
+  Esc close); single-click an item to run it. It has **two focus modes**, chosen by the `passive`
+  constructor flag:
+  - **Sticky (default — the text/files re-copy trigger):** clicking away doesn't close it — an 80 ms
+    `DispatcherTimer` watchdog (plus the `Deactivated` handler) rips the foreground back via
+    `ForceForeground()`, which re-asserts topmost and uses the `AttachThreadInput` trick to beat
+    Windows' foreground lock (plain `Activate()` loses to a freshly launched app). Only Esc or running
+    a command closes it. The guard is skipped while a modal child (delete confirm) is up, a command is
+    running, or the window is hidden/closing.
+  - **Passive (`passive: true` — the image trigger):** stays topmost but **never** takes focus —
+    `ShowActivated = false`, no `Activate()` from App, no foreground grab, no watchdog. Since it has no
+    focus it can't see input directly, so dismissal comes from the global hooks: **any keypress**
+    (`GlobalKeys`, modifiers and auto-repeat excluded) or **any mouse press outside its rect**
+    (`GlobalMouse`). Both are ignored for `PassiveArmDelayMs` (250 ms) after it opens so the tail of
+    the copy gesture can't close it instantly. Clicking the popup activates it → `_engaged`, after
+    which the keyboard is the user's (filter/↑/↓/Enter) and only Esc or an outside click closes it.
+  - `TryUpdatePayload(payload, commands)` swaps in a payload that arrived just after the popup opened
+    (see the screenshot swap below) and rebuilds the list; it declines once the user has typed in the
+    filter or moved the selection, so nothing shifts under them.
 - `Services/ClaudeCli.cs` — wraps the `claude` CLI for all AI features (text transform, vision
   describe, agentic "Act with"). Uses sped-up flags (`-p --no-session-persistence --strict-mcp-config`)
   that don't break OAuth — deliberately **not** `--bare` (which forces API-key auth). Runs in the
@@ -79,7 +94,17 @@ which are downloaded on first use into a gitignored `library-dump/` folder in th
 - `Services/ClipboardCycle.cs` — Clipboard Cycle: splits text into fragments and advances on each
   Ctrl+V; exposes remaining + next-preview for the overlay. Esc ends it (global).
 - `Services/GlobalKeys.cs` — shared, refcounted `WH_KEYBOARD_LL` hook (installed only while Hawk/Cycle
-  are active) reporting global Ctrl+V / Escape without focus. Never suppresses keys.
+  or a popup need it) reporting global keys without focus. Never suppresses keys.
+- `Services/GlobalMouse.cs` — its mouse twin (`WH_MOUSE_LL`), reporting button presses with screen
+  coordinates. Only held while a passive popup is open, so click-outside can close it.
+- `Services/ScreenshotSwap.cs` — Windows' screen capture puts the pixels on the clipboard *and* saves a
+  file under the Screenshots known folder, so the path is unpastable. On an image-only copy this polls
+  that folder (≤3 s, since the file often lands after the clipboard) for a fresh file whose **pixel
+  dimensions match** the clipboard bitmap — that match is what keeps an unrelated image copy from
+  grabbing a recent screenshot — then rewrites the clipboard as one `DataObject` carrying the **file
+  drop + the path as text** (quoted when it contains spaces, like Explorer's "Copy as path") **+ the
+  original bitmap**. Nothing is lost: terminals/AI prompts get the path, Explorer gets the file, image
+  apps still get the pixels. The write is masked with `SuppressNext()`.
 - `UI/ModeOverlay.cs` — the top-left on-screen status card shown while a mode is active (icon, detail,
   optional thumbnail).
 - `UI/StatusToast.cs` — small non-activating "…running/processing…" chip shown near the cursor during a command.

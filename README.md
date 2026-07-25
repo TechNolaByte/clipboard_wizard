@@ -1,6 +1,7 @@
 # Clipboard Wizard
 
-A Windows clipboard power-tool. Copying an **image** pops the menu instantly; for text/files a single
+A Windows clipboard power-tool. Copying an **image** pops the menu instantly (without stealing focus);
+for text/files a single
 copy is silent — **copy the same thing twice** (a second Ctrl+C on the same selection) and a small
 command menu pops up at your mouse cursor (clamped to the screen) listing every action available for
 what you copied.
@@ -54,6 +55,16 @@ launching again takes over the previous one (and asks first if it's mid-command)
 To summon the popup for the current clipboard, just **copy the same content again** — a re-copy of
 identical content is the trigger, so a normal one-off copy never interrupts you.
 
+**Image copies never interrupt you either.** The popup that an image copy summons stays on top but
+takes no focus: keep typing where you were and it quietly closes, or click it to use it. Click it and
+it's yours — filter, arrow around, Enter to run — until Esc or a click away.
+
+**Screen captures also get their file put on the clipboard.** Windows saves Win+Shift+S / PrintScreen
+shots into `Pictures\Screenshots` but only puts the pixels on the clipboard, so there's nothing to
+paste into a terminal. Clipboard Wizard spots the saved shot and adds it: paste into a terminal or an
+AI prompt and you get the **path**, paste into Explorer or an upload box and you get the **file**, paste
+into an editor or chat app and you still get the **image**.
+
 ## Keyboard
 
 | Key | Action |
@@ -62,3 +73,6 @@ identical content is the trigger, so a normal one-off copy never interrupts you.
 | ↑ / ↓ | move selection |
 | Enter | run selected command |
 | Esc | dismiss |
+
+An image-triggered popup has no focus, so **any keypress** (or a mouse press anywhere but on it)
+dismisses it — until you click it, after which the table above applies.

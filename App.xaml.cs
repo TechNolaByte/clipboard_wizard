@@ -32,6 +32,15 @@ public partial class App : Application
         // Show a dialog (and log) instead of dying silently on an unhandled exception.
         CrashHandler.Install();
 
+        // Explorer context-menu verb: a one-shot process that never touches the clipboard monitor,
+        // the tray, or the single-instance mutex (the resident instance keeps running untouched).
+        if (e.Args.Length > 0 && e.Args[0] == IntelligentName.RenameSwitch)
+        {
+            AppPaths.InitializeWorkingArea();
+            _ = RunExplorerVerbThenExitAsync(e.Args.Skip(1));
+            return;
+        }
+
         // Single-instance: a new launch overrides the previous one (asking first if it's busy).
         SingleInstance.QuitRequested = () => Dispatcher.BeginInvoke(new Action(Shutdown));
         if (!SingleInstance.TryStart())
@@ -59,6 +68,23 @@ public partial class App : Application
 
         Hawk.Changed = OnModeChanged;
         ClipboardCycle.Changed = OnModeChanged;
+    }
+
+    private async Task RunExplorerVerbThenExitAsync(IEnumerable<string> files)
+    {
+        try
+        {
+            await IntelligentName.RunExplorerVerbAsync(files);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"{IntelligentName.CommandName} failed:\n{ex.Message}", "Clipboard Wizard",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Shutdown();
+        }
     }
 
     private void OnClipboardChanged(object? sender, EventArgs e)

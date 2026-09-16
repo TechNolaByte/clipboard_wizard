@@ -59,6 +59,7 @@ public sealed class CommandRegistry
         yield return new JpgToPngCommand();
         yield return new TransformImageCommand();
         yield return new DescribeImageCommand(DescribeMode.Title);
+        yield return new DescribeImageCommand(DescribeMode.SaveWithName);
         yield return new DescribeImageCommand(DescribeMode.Verbose);
     }
 

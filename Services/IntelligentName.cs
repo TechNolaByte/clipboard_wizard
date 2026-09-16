@@ -28,11 +28,9 @@ public static class IntelligentName
 
     public static string Stamp(DateTime when) => when.ToString(StampFormat);
 
-    /// <summary>The vision prompt: the "describe — title" prompt, tightened for a file name.</summary>
+    /// <summary>The full prompt as the log shows it: the describe-title seed plus the per-shot tail.</summary>
     public static string TitleInstruction(string imagePath) =>
-        $"View the image file at {imagePath} and give it a concise title of about 5 words, " +
-        "suitable as a file name: plain words, no quotes, no punctuation, no file extension. " +
-        "Output only the title, nothing else.";
+        SeedPrompts.DescribeTitle.Slow + "\n\n" + SeedPrompts.ImageTail(imagePath);
 
     /// <summary>Make a model-written title safe as a file-name stem. Falls back to "image".</summary>
     public static string Sanitize(string? title)
@@ -173,7 +171,10 @@ public static class IntelligentName
         return batch.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>Rename each image file in place to "{stamp} {title}{ext}", one vision call each.</summary>
+    /// <summary>
+    /// Rename each image file in place to "{stamp} {title}{ext}". One vision shot per file, all forks
+    /// of the describe-title seed, <see cref="Seeds.BulkParallelism"/> at a time.
+    /// </summary>
     public static async Task RenameInPlaceAsync(IReadOnlyList<string> files)
     {
         var images = files.Where(f => File.Exists(f) && ImageIO.IsImageFile(f)).ToList();
@@ -185,27 +186,39 @@ public static class IntelligentName
         }
 
         var failures = new List<string>();
+        // Stage copies in the scratchpad so the CLI's Read stays confined to that folder.
+        var staged = new string[images.Count];
+        for (var i = 0; i < images.Count; i++)
+        {
+            staged[i] = Path.Combine(AppPaths.ScratchpadDir, $"rename_{Guid.NewGuid():N}{Path.GetExtension(images[i])}");
+            try { File.Copy(images[i], staged[i], overwrite: true); }
+            catch (Exception ex) { failures.Add($"{Path.GetFileName(images[i])}: {ex.Message}"); staged[i] = ""; }
+        }
+
+        var seed = SeedPrompts.DescribeTitle;
+        var prompts = staged.Select(s => s.Length > 0 ? SeedPrompts.ImageTail(s) : "").ToList();
+        StatusToast.Show($"{CommandName} · 0/{images.Count}");
+        var ui = SynchronizationContext.Current;
+        ClaudeResult[] results;
+        try
+        {
+            results = await Seeds.BulkAsync(seed, prompts.Select(p => p.Length > 0 ? p : "(skipped)").ToList(),
+                n => { if (ui is null) return; ui.Post(_ => StatusToast.Show($"{CommandName} · {n}/{images.Count}"), null); });
+        }
+        finally
+        {
+            foreach (var s in staged) if (s.Length > 0) { try { File.Delete(s); } catch { /* scratch */ } }
+        }
+
         for (var i = 0; i < images.Count; i++)
         {
             var src = images[i];
-            StatusToast.Show($"{CommandName} · {i + 1}/{images.Count} · {Path.GetFileName(src)}");
+            if (staged[i].Length == 0) continue;
+            var result = results[i];
+            var instruction = TitleInstruction(staged[i]);
+            var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}\n\n{result.Usage}";
             try
             {
-                // Stage a copy in the scratchpad so the CLI's Read stays confined to that folder.
-                var staged = Path.Combine(AppPaths.ScratchpadDir, $"rename_{Guid.NewGuid():N}{Path.GetExtension(src)}");
-                File.Copy(src, staged, overwrite: true);
-                var instruction = TitleInstruction(staged);
-                ClaudeResult result;
-                try
-                {
-                    result = await ClaudeCli.RunVisionReadAsync(instruction, AppPaths.ScratchpadDir);
-                }
-                finally
-                {
-                    try { File.Delete(staged); } catch { /* scratch */ }
-                }
-
-                var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}";
                 if (!result.Success || string.IsNullOrWhiteSpace(result.Output))
                 {
                     ActionLog.Write(CommandName, instruction, null, src, processLog, null, null);

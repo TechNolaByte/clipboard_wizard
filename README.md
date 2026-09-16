@@ -30,6 +30,8 @@ When the clipboard holds an image, image operations appear too:
   (fragment + paste), Auto-format and print.
 
 AI features shell out to the **`claude` CLI** (reusing your Claude Code login — no API key needed).
+Each command runs as a fork of its own cached seed session, so repeated and bulk work only pays for
+what's new — the image path, the text — not the standing instruction.
 
 See [the editing guide](claude-instructions-for-editing-project.md) for architecture and the full
 command roadmap (what's implemented vs stubbed).

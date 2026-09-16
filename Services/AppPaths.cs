@@ -37,6 +37,10 @@ public static class AppPaths
     /// <summary>Per-action .rtf audit logs (gitignored — they contain raw clipboard data).</summary>
     public static string LogsDir => EnsureDir(Path.Combine(WorkingRoot, "logs"));
 
+    /// <summary>Durable seed sessions for the fork-from-seed shots (<see cref="Seeds"/>). Its own
+    /// Claude Code transcript slug, so nothing else sweeps them.</summary>
+    public static string SeedsDir => EnsureDir(Path.Combine(WorkingRoot, "seeds"));
+
     /// <summary>
     /// Create the working scaffold and seed <c>working/CLAUDE.md</c> if absent. Called at startup.
     /// </summary>

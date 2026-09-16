@@ -94,7 +94,7 @@ public sealed class TransformImageCommand : IClipboardCommand
         StatusToast.Show("Transform image · Claude deriving args…");
         try
         {
-            gen = await ClaudeCli.RunTextAsync(spec, null, systemPrompt);
+            gen = await Seeds.ShotAsync(SeedPrompts.TransformImage(toolName, systemPrompt), spec);
         }
         catch (Exception ex)
         {

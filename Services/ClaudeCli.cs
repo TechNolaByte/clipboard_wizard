@@ -72,7 +72,7 @@ public static class ClaudeCli
         }
     }
 
-    private static string WithMemory(string appendSystemPrompt)
+    internal static string WithMemory(string appendSystemPrompt)
     {
         var memory = DumpMemory();
         return string.IsNullOrEmpty(memory)
@@ -169,6 +169,9 @@ public static class ClaudeCli
 
 public sealed record ClaudeResult(bool Success, string Output, string Error, int ExitCode)
 {
+    /// <summary>Seeded shots report the seed and cache usage here (see <see cref="Seeds"/>); cold runs leave it null.</summary>
+    public string? Usage { get; init; }
+
     public static ClaudeResult From(ProcResult r) =>
         new(r.Ok, r.StdOut.Trim(), r.StdErr.Trim(), r.ExitCode);
 

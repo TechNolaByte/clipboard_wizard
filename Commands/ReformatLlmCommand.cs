@@ -46,7 +46,7 @@ public sealed class ReformatLlmCommand : IClipboardCommand
         StatusToast.Show("Reformat — LLM · Claude processing…");
         try
         {
-            result = await ClaudeCli.RunTextAsync(spec, input, SystemPrompt);
+            result = await Seeds.ShotAsync(SeedPrompts.ReformatLlm, SeedPrompts.ReformatTail(spec, input));
         }
         catch (Exception ex)
         {

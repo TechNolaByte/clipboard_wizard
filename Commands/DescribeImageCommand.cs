@@ -64,20 +64,15 @@ public sealed class DescribeImageCommand : IClipboardCommand
             return;
         }
 
-        var instruction = _mode switch
+        // One durable seed per mode carries the standing instruction; the shot is just the path.
+        var seed = _mode switch
         {
-            DescribeMode.Title =>
-                $"View the image file at {imagePath} and give it a concise title of about 5 words. " +
-                "Output only the title, nothing else.",
-            DescribeMode.Verbose =>
-                $"View the image file at {imagePath} and describe it in about 3 sentences. " +
-                "Output only the description, nothing else.",
-            DescribeMode.SaveWithName => IntelligentName.TitleInstruction(imagePath),
-            _ =>
-                $"View the image file at {imagePath} and transcribe the exact text it contains, " +
-                "verbatim, preserving line breaks and reading order. Output only the transcribed text " +
-                "and nothing else. If the image contains no text, output nothing.",
+            DescribeMode.Verbose => SeedPrompts.DescribeVerbose,
+            DescribeMode.Transcribe => SeedPrompts.Transcribe,
+            _ => SeedPrompts.DescribeTitle,
         };
+        var tail = SeedPrompts.ImageTail(imagePath);
+        var instruction = seed.Slow + "\n\n" + tail; // what the log and the verbose runner show
 
         if (AppState.Verbose)
         {
@@ -90,7 +85,7 @@ public sealed class DescribeImageCommand : IClipboardCommand
         StatusToast.Show($"{Name} · Claude processing…");
         try
         {
-            result = await ClaudeCli.RunVisionReadAsync(instruction, AppPaths.ScratchpadDir);
+            result = await Seeds.ShotAsync(seed, tail);
         }
         catch (Exception ex)
         {
@@ -103,7 +98,7 @@ public sealed class DescribeImageCommand : IClipboardCommand
             StatusToast.Hide();
         }
 
-        var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}";
+        var processLog = $"claude stdout:\n{result.Output}\n\nstderr:\n{result.Error}\n\n{result.Usage}";
         if (!result.Success || string.IsNullOrEmpty(result.Output))
         {
             ActionLog.Write(Name, instruction, null, imagePath, processLog, null, null);

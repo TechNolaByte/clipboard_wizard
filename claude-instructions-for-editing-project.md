@@ -159,6 +159,14 @@ files), **Actions** (verbs), **Collect** (capture/collection modes). Category �
 ### AI commands (via the `claude` CLI)
 - All AI features route through `Services/ClaudeCli.cs` (the CLI, **not** the HTTP API) so they reuse
   the user's Claude Code login. Model is **Sonnet** (`--model sonnet`, i.e. `claude-sonnet-5`).
+- **The lean ops are fork-from-seed shots** (`Services/Seeds.cs`, Tadpole's pattern from
+  tabbitha-cloud `internal/tadpole/seed.go`): each command keeps one durable seed session under
+  `working/seeds/` whose system prompt is its standing instruction (`SeedPrompts`), and every call
+  is `--resume <seed> --fork-session --no-session-persistence` with only the per-shot tail (the image
+  path, the text) as new tokens — cached prefix, pristine context per shot, and `Seeds.BulkAsync`
+  runs forks 3 at a time for bulk work. A seed is re-cut when its instruction/model/tool shape
+  changes; a failed fork re-seeds once. `ClaudeResult.Usage` carries the cache numbers into the
+  action log. Verbose mode still shows the cold command line (`VisionArgs` / `TextArgs`).
 - The **lean ops** (text transforms + vision describe) run under `--safe-mode`: it disables CLAUDE.md
   auto-discovery, skills, hooks, and MCP while keeping OAuth auth, built-in tools, and permissions —
   so no project docs leak into a clipboard transform. Since safe-mode also skips the working memory,

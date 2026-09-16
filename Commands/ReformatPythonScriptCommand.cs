@@ -55,7 +55,7 @@ public sealed class ReformatPythonScriptCommand : IClipboardCommand
         StatusToast.Show("Reformat — writing Python script…");
         try
         {
-            gen = await ClaudeCli.RunTextAsync(spec, null, SystemPrompt);
+            gen = await Seeds.ShotAsync(SeedPrompts.ReformatPython(SystemPrompt), spec);
         }
         catch (Exception ex)
         {

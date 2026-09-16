@@ -21,7 +21,7 @@ When the clipboard holds an image, image operations appear too:
 - **Image** — operations shown only when the clipboard holds an image or image files:
   transcribe (exact text / OCR), transform (ffmpeg/ImageMagick), gif↔png, jpg→png, AI describe
   (title / verbose), and *Save file with intelligent name* (drops the image into Downloads as
-  `<yyyy-MM-dd HH-mm-ss> <AI title>.png`).
+  `<yyyy-MM-ddTHH.mm.ss> <AI title>.png`).
 - **Explorer** — right-click any image files → *Rename with intelligent name*: each is renamed in
   place to `<file's timestamp> <AI title>.<ext>` (install once with `install-context-menu.ps1`).
 - **Actions** — Execute as PowerShell, Reformat in situ (LLM or a saved Python script),

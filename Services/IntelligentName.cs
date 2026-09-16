@@ -11,7 +11,8 @@ namespace ClipboardWizard.Services;
 
 /// <summary>
 /// An "intelligent name": a local timestamp plus a short vision-generated title, e.g.
-/// <c>2026-09-16 07-42-10 Cat asleep on keyboard.png</c>. Shared by the clipboard command
+/// <c>2026-09-16T07.42.10 Cat asleep on keyboard.png</c> — Duck's datetime format, with dots in
+/// the clock because a colon can't be in a file name. Shared by the clipboard command
 /// ("Save file with intelligent name" → Downloads) and the Explorer context-menu verb
 /// (<c>--intelligent-rename</c> → selected image files renamed in place).
 /// </summary>
@@ -19,10 +20,10 @@ public static class IntelligentName
 {
     public const string CommandName = "Rename with intelligent name";
     public const string RenameSwitch = "--intelligent-rename";
-    public const string StampFormat = "yyyy-MM-dd HH-mm-ss";
+    public const string StampFormat = "yyyy-MM-ddTHH.mm.ss";
 
     private static readonly Regex StampPrefix =
-        new(@"^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}(?:[ _-]|$)", RegexOptions.Compiled);
+        new(@"^\d{4}-\d{2}-\d{2}T\d{2}\.\d{2}\.\d{2}(?:[ _-]|$)", RegexOptions.Compiled);
     private static readonly Regex Whitespace = new(@"\s+", RegexOptions.Compiled);
 
     public static string Stamp(DateTime when) => when.ToString(StampFormat);

@@ -10,7 +10,7 @@
 
   On image files (SystemFileAssociations\image) it maintains:
     * "Rename with intelligent name" -> ClipboardWizard.exe --intelligent-rename "%1"
-      Renames each selected image in place to "<yyyy-MM-dd HH-mm-ss> <AI title>.<ext>" (the
+      Renames each selected image in place to "<yyyy-MM-ddTHH.mm.ss> <AI title>.<ext>" (the
       stamp is the file's last-write time). Explorer launches one process per selected file;
       the app collects them into a single batch (Services\IntelligentName.cs), and
       MultiSelectModel=Player lifts Explorer's 15-item cap on multi-select verbs.

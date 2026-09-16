@@ -145,7 +145,7 @@ files), **Actions** (verbs), **Collect** (capture/collection modes). Category �
 | Transform image — NL spec → ImageMagick/ffmpeg args | Image | ✅ implemented (`TransformImageCommand`) |
 | Describe — title (~5 words) / verbose (~3 sentences) | Image | ✅ implemented (Sonnet vision via CLI, `DescribeImageCommand`) |
 | Transcribe — exact text in image (verbatim OCR via Sonnet vision) | Image | ✅ implemented (`DescribeImageCommand` `DescribeMode.Transcribe`) |
-| Save file with intelligent name — the title prompt, saved to Downloads as `<now> <title>.<ext>` and revealed | Image | ✅ implemented (`DescribeImageCommand` `DescribeMode.SaveWithName`, helpers in `Services/IntelligentName.cs`) |
+| Save file with intelligent name — the title prompt, saved to Downloads as `<yyyy-MM-ddTHH.mm.ss> <title>.<ext>` (dots: no colons in file names) and revealed | Image | ✅ implemented (`DescribeImageCommand` `DescribeMode.SaveWithName`, helpers in `Services/IntelligentName.cs`) |
 | Rename with intelligent name — Explorer verb on image files (`ClipboardWizard.exe --intelligent-rename`), renames in place to `<file's last-write time> <title>.<ext>`; one process per selected file, collected into one batch via a spool + mutex | Explorer | ✅ implemented (`Services/IntelligentName.cs`, `App.OnStartup`; registered by `install-context-menu.ps1`, HKCU `SystemFileAssociations\image\shell`) |
 | Reformat in situ — LLM (Sonnet via CLI, spec entered after selecting) | Actions | ✅ implemented (`ReformatLlmCommand`) |
 | Reformat in situ — Python script (Sonnet writes + saves a reusable script, then runs it) | Actions | ✅ implemented (`ReformatPythonScriptCommand`) |
